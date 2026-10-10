@@ -1,0 +1,14 @@
+# Dependecies
+node_modules/
+
+#Production build outputs
+dist/
+build/
+.vite/
+
+# Environment variables
+.env
+
+# Logs and maps
+npm-debug.log*
+*.js.map
