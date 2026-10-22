@@ -1,0 +1,49 @@
+{
+  "name": "Believers e-Library — Christian Study & Spiritual Growth",
+  "short_name": "Believers Library",
+  "description": "Offline-capable Bible reader, daily devotionals, hymn book with Web Audio organ synthesis, personal journal, and Christian study library.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d1830",
+  "theme_color": "#0d1830",
+  "categories": ["books", "education", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Bible Reader",
+      "short_name": "Bible",
+      "description": "Open the 66-book Bible reader",
+      "url": "/bible",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Daily Devotional",
+      "short_name": "Devotional",
+      "description": "Read today's Scripture reflection and prayer",
+      "url": "/devotional",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Hymn Book",
+      "short_name": "Hymns",
+      "description": "Play and sing classic Christian hymns",
+      "url": "/hymns",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    }
+  ]
+}

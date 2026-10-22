@@ -1,28 +1,79 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Flame, 
-  Calendar, 
-  BookOpen, 
-  Music, 
-  Mic, 
-  Video, 
-  Heart, 
+import {
+  Flame,
+  BookOpen,
   ChevronRight,
   TrendingUp,
   Trophy,
   Music2,
   Library,
-  ScrollText
+  ScrollText,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { AppIcon } from '@/components/common/AppIcon';
+import { computeStreak, activeDaysThisWeek, countCompletedDevotionals } from '@/lib/activity';
+import { getDevotionals } from '@/data/mockDevotionalHymnData';
+import { loadDailyVerse } from '@/lib/contentSource';
+import { MONTHS } from '@/types/devotional-hymn';
+import { toast } from 'sonner';
+
+const DAILY_VERSE = {
+  text: '"For I know the plans I have for you," declares the LORD, "plans to prosper you and not to harm you, plans to give you hope and a future."',
+  reference: 'Jeremiah 29:11',
+};
+
+function greetingForHour(hour: number): string {
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
+  return 'Good Evening';
+}
 
 export function Home() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [cmsVerse, setCmsVerse] = useState<{ text: string; ref: string } | null>(null);
+
+  // Scripture of the day from the church CMS (memoized for 5 minutes in
+  // contentSource). While it loads — and if there is none — the built-in
+  // DAILY_VERSE below is shown, so the card is never empty.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const verse = await loadDailyVerse();
+      if (!cancelled) setCmsVerse(verse);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const dailyVerse = cmsVerse
+    ? { text: cmsVerse.text, reference: cmsVerse.ref }
+    : { text: DAILY_VERSE.text, reference: DAILY_VERSE.reference };
+
+  const streak = useMemo(() => computeStreak(), []);
+  const week = useMemo(() => activeDaysThisWeek(), []);
+  const completedCount = useMemo(() => countCompletedDevotionals(), []);
+
+  const todayDevotional = useMemo(() => {
+    const now = new Date();
+    try {
+      return (
+        getDevotionals().find(
+          (d) => d.year === now.getFullYear() && d.month === MONTHS[now.getMonth()] && d.day === now.getDate()
+        ) ?? null
+      );
+    } catch {
+      return null;
+    }
+  }, []);
 
   const sections = [
     { title: 'Daily Devotional', icon: BookOpen, color: 'text-rose-600', to: '/devotional' },
@@ -31,19 +82,41 @@ export function Home() {
     { title: 'E-Library', icon: Library, color: 'text-purple-600', to: '/library' },
   ];
 
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const shareVerse = async () => {
+    const shareText = `"${dailyVerse.text}" — ${dailyVerse.reference}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Daily Verse', text: shareText });
+        return;
+      }
+      await navigator.clipboard.writeText(shareText);
+      toast.success('Verse copied to clipboard');
+    } catch {
+      toast.error('Could not share the verse');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <header className="flex justify-between items-start">
         <div className="flex items-center gap-3">
           <AppIcon className="h-12 w-12 shadow-md shadow-primary/10" />
           <div>
-            <h1 className="text-2xl font-serif text-primary">Good Morning, {user?.name}</h1>
-            <p className="text-muted-foreground text-sm">Today is Monday, June 12</p>
+            <h1 className="text-2xl font-serif text-primary">
+              {greetingForHour(now.getHours())}, {user?.name}
+            </h1>
+            <p className="text-muted-foreground text-sm">Today is {dateLabel}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-accent/20 px-3 py-1.5 rounded-full border border-accent/30">
+        <div
+          className="flex items-center gap-2 bg-accent/20 px-3 py-1.5 rounded-full border border-accent/30"
+          title={streak > 0 ? `${streak}-day activity streak` : 'No streak yet — act today to start'}
+        >
           <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
-          <span className="text-sm font-bold text-primary">12</span>
+          <span className="text-sm font-bold text-primary">{streak}</span>
         </div>
       </header>
 
@@ -53,12 +126,16 @@ export function Home() {
         <CardContent className="p-6 relative z-10 space-y-4">
           <Badge variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-none">Daily Verse</Badge>
           <blockquote className="text-xl font-serif italic leading-relaxed">
-            "For I know the plans I have for you," declares the LORD, "plans to prosper you and not to harm you, plans to give you hope and a future."
+            {dailyVerse.text}
           </blockquote>
-          <cite className="block text-sm opacity-80">— Jeremiah 29:11</cite>
+          <cite className="block text-sm opacity-80">— {dailyVerse.reference}</cite>
           <div className="flex gap-2 pt-2">
-            <Button size="sm" variant="secondary" className="bg-white text-primary hover:bg-white/90">Share</Button>
-            <Button size="sm" variant="outline" className="text-white border-white/40 hover:bg-white/10">Reflect</Button>
+            <Button size="sm" variant="secondary" className="bg-white text-primary hover:bg-white/90" onClick={shareVerse}>
+              Share
+            </Button>
+            <Button size="sm" variant="outline" className="text-white border-white/40 hover:bg-white/10" onClick={() => navigate('/journal')}>
+              Reflect
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -67,46 +144,68 @@ export function Home() {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-serif text-primary">Today's Devotional</h2>
-          <Button variant="ghost" size="sm" className="text-primary">View All <ChevronRight className="ml-1 w-4 h-4" /></Button>
+          <Button variant="ghost" size="sm" className="text-primary" onClick={() => navigate('/devotional')}>
+            View All <ChevronRight className="ml-1 w-4 h-4" />
+          </Button>
         </div>
-        <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-shadow cursor-pointer">
+        <Card
+          className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
+          onClick={() => navigate('/devotional')}
+        >
           <div className="h-48 bg-[url('https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/devotional-cover-1-cb4ac9fc-1782601932817.webp')] bg-cover bg-center" />
           <CardContent className="p-5 space-y-2">
             <div className="flex justify-between items-center text-xs text-muted-foreground font-medium uppercase tracking-wider">
-              <span>June 12 • Day 163</span>
-              <span className="flex items-center gap-1"><Heart className="w-3 h-3 fill-rose-500 text-rose-500" /> 1.2k</span>
+              <span>{dateLabel}</span>
+              {todayDevotional ? (
+                <span>{todayDevotional.scriptureRef}</span>
+              ) : (
+                <span>Read • Reflect • Pray</span>
+              )}
             </div>
-            <h3 className="text-lg font-bold text-primary group-hover:text-primary/80">Walking in Divine Purpose</h3>
-            <p className="text-sm text-muted-foreground line-clamp-2">Understanding how God leads us through seasons of uncertainty and quietness...</p>
+            <h3 className="text-lg font-bold text-primary group-hover:text-primary/80">
+              {todayDevotional ? todayDevotional.title : 'Open the Devotional'}
+            </h3>
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {todayDevotional
+                ? todayDevotional.keyThought
+                : 'Browse your reading plan, complete today’s entry, and carry God’s Word into your day.'}
+            </p>
             <div className="pt-2 flex items-center justify-between">
-              <div className="flex -space-x-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="w-6 h-6 rounded-full border-2 border-white bg-muted flex items-center justify-center text-[10px] font-bold">
-                    {String.fromCharCode(64 + i)}
-                  </div>
-                ))}
-                <span className="ml-4 text-xs text-muted-foreground font-medium self-center">+12k Reading</span>
-              </div>
-              <Button size="sm" className="bg-primary hover:bg-primary/90">Continue Reading</Button>
+              {todayDevotional && todayDevotional.isCompleted ? (
+                <Badge className="bg-emerald-100 text-emerald-700 border-none">Completed</Badge>
+              ) : (
+                <span />
+              )}
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+                onClick={(e) => { e.stopPropagation(); navigate('/devotional'); }}
+              >
+                {todayDevotional?.isCompleted ? 'Review' : 'Continue Reading'}
+              </Button>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats (derived from real activity) */}
       <div className="grid grid-cols-2 gap-4">
         <Card className="bg-secondary border-none">
           <CardContent className="p-4 flex flex-col items-center text-center space-y-1">
             <TrendingUp className="w-6 h-6 text-primary" />
-            <span className="text-2xl font-bold text-primary">85%</span>
-            <span className="text-xs text-muted-foreground font-medium uppercase">Weekly Progress</span>
+            <span className="text-2xl font-bold text-primary">
+              {Math.round((week.active / week.total) * 100)}%
+            </span>
+            <span className="text-xs text-muted-foreground font-medium uppercase">
+              Weekly Activity ({week.active}/{week.total} days)
+            </span>
           </CardContent>
         </Card>
         <Card className="bg-accent/10 border-none">
           <CardContent className="p-4 flex flex-col items-center text-center space-y-1">
             <Trophy className="w-6 h-6 text-accent" />
-            <span className="text-2xl font-bold text-primary">Master</span>
-            <span className="text-xs text-muted-foreground font-medium uppercase">Current Level</span>
+            <span className="text-2xl font-bold text-primary">{completedCount}</span>
+            <span className="text-xs text-muted-foreground font-medium uppercase">Devotionals Completed</span>
           </CardContent>
         </Card>
       </div>
@@ -119,7 +218,7 @@ export function Home() {
           <Button
             key={section.title}
             variant="outline"
-            onClick={() => { window.location.href = `#${section.to}` }}
+            onClick={() => navigate(section.to)}
             className="h-auto py-6 flex flex-col items-center gap-3 border-border/40 hover:border-primary/40 hover:bg-primary/5 transition-all group"
           >
             <div className={cn("p-3 rounded-2xl bg-white shadow-sm transition-transform group-hover:scale-110", section.color)}>

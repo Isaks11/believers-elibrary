@@ -1,0 +1,176 @@
+/*
+ * Selectable accent-theme palettes for Believers e-Library.
+ *
+ * Each palette re-declares the brand tokens (--primary, --secondary, --accent,
+ * --ring and the sidebar primary pair) on an `html[data-accent-theme="…"]`
+ * attribute selector. The explicit `html` prefix raises specificity above the
+ * `:root` block in index.css, so palettes win without touching that file.
+ * Dark variants use `html.dark[data-accent-theme="…"]` — matching the
+ * `.dark`-class dark mode declared in index.css — with slightly brighter
+ * primaries so they still read against dark surfaces.
+ *
+ * The active palette is applied to <html> by `src/lib/theme.ts`; the `default`
+ * palette reproduces the stock index.css brand values exactly.
+ */
+
+/* --------------------------------- default -------------------------------- */
+/* Navy primary + green secondary + gold accent (stock app colors). */
+
+html[data-accent-theme="default"] {
+  --primary: oklch(0.2 0.08 260);
+  --primary-foreground: oklch(0.99 0.01 85);
+  --secondary: oklch(0.35 0.1 160);
+  --secondary-foreground: oklch(0.99 0.01 85);
+  --accent: oklch(0.75 0.15 85);
+  --accent-foreground: oklch(0.2 0.08 260);
+  --ring: oklch(0.75 0.15 85);
+  --sidebar-primary: oklch(0.2 0.08 260);
+  --sidebar-primary-foreground: oklch(0.99 0.01 85);
+}
+
+html.dark[data-accent-theme="default"] {
+  --primary: oklch(0.78 0.1 260);
+  --primary-foreground: oklch(0.2 0.08 260);
+  --secondary: oklch(0.55 0.11 160);
+  --secondary-foreground: oklch(0.16 0.05 160);
+  --accent: oklch(0.8 0.14 85);
+  --accent-foreground: oklch(0.25 0.07 85);
+  --ring: oklch(0.78 0.12 85);
+  --sidebar-primary: oklch(0.78 0.1 260);
+  --sidebar-primary-foreground: oklch(0.2 0.08 260);
+}
+
+/* --------------------------------- emerald -------------------------------- */
+/* Deep emerald primary, teal secondary, soft mint accent. */
+
+html[data-accent-theme="emerald"] {
+  --primary: oklch(0.43 0.11 163);
+  --primary-foreground: oklch(0.98 0.02 160);
+  --secondary: oklch(0.35 0.07 200);
+  --secondary-foreground: oklch(0.98 0.02 190);
+  --accent: oklch(0.85 0.1 150);
+  --accent-foreground: oklch(0.28 0.06 163);
+  --ring: oklch(0.6 0.12 160);
+  --sidebar-primary: oklch(0.43 0.11 163);
+  --sidebar-primary-foreground: oklch(0.98 0.02 160);
+}
+
+html.dark[data-accent-theme="emerald"] {
+  --primary: oklch(0.72 0.13 163);
+  --primary-foreground: oklch(0.22 0.06 163);
+  --secondary: oklch(0.5 0.09 195);
+  --secondary-foreground: oklch(0.18 0.05 195);
+  --accent: oklch(0.86 0.11 150);
+  --accent-foreground: oklch(0.28 0.06 163);
+  --ring: oklch(0.72 0.13 163);
+  --sidebar-primary: oklch(0.72 0.13 163);
+  --sidebar-primary-foreground: oklch(0.22 0.06 163);
+}
+
+/* ---------------------------------- royal --------------------------------- */
+/* Deep royal-blue primary, slate-blue secondary, gold accent. */
+
+html[data-accent-theme="royal"] {
+  --primary: oklch(0.32 0.12 265);
+  --primary-foreground: oklch(0.98 0.01 260);
+  --secondary: oklch(0.45 0.1 250);
+  --secondary-foreground: oklch(0.98 0.01 260);
+  --accent: oklch(0.78 0.14 80);
+  --accent-foreground: oklch(0.24 0.06 265);
+  --ring: oklch(0.6 0.14 265);
+  --sidebar-primary: oklch(0.32 0.12 265);
+  --sidebar-primary-foreground: oklch(0.98 0.01 260);
+}
+
+html.dark[data-accent-theme="royal"] {
+  --primary: oklch(0.65 0.15 265);
+  --primary-foreground: oklch(0.18 0.06 265);
+  --secondary: oklch(0.55 0.12 250);
+  --secondary-foreground: oklch(0.15 0.05 250);
+  --accent: oklch(0.82 0.13 85);
+  --accent-foreground: oklch(0.25 0.06 265);
+  --ring: oklch(0.65 0.15 265);
+  --sidebar-primary: oklch(0.65 0.15 265);
+  --sidebar-primary-foreground: oklch(0.18 0.06 265);
+}
+
+/* ----------------------------------- rose --------------------------------- */
+/* Raspberry-rose primary, mauve secondary, blush-pink accent. */
+
+html[data-accent-theme="rose"] {
+  --primary: oklch(0.5 0.17 12);
+  --primary-foreground: oklch(0.99 0.01 20);
+  --secondary: oklch(0.42 0.13 350);
+  --secondary-foreground: oklch(0.98 0.02 350);
+  --accent: oklch(0.85 0.08 20);
+  --accent-foreground: oklch(0.32 0.1 12);
+  --ring: oklch(0.65 0.16 12);
+  --sidebar-primary: oklch(0.5 0.17 12);
+  --sidebar-primary-foreground: oklch(0.99 0.01 20);
+}
+
+html.dark[data-accent-theme="rose"] {
+  --primary: oklch(0.7 0.15 12);
+  --primary-foreground: oklch(0.25 0.09 12);
+  --secondary: oklch(0.55 0.13 350);
+  --secondary-foreground: oklch(0.2 0.07 350);
+  --accent: oklch(0.86 0.09 20);
+  --accent-foreground: oklch(0.32 0.1 12);
+  --ring: oklch(0.7 0.15 12);
+  --sidebar-primary: oklch(0.7 0.15 12);
+  --sidebar-primary-foreground: oklch(0.25 0.09 12);
+}
+
+/* --------------------------------- amethyst -------------------------------- */
+/* Purple primary, plum-violet secondary, lilac accent. */
+
+html[data-accent-theme="amethyst"] {
+  --primary: oklch(0.43 0.15 300);
+  --primary-foreground: oklch(0.98 0.02 300);
+  --secondary: oklch(0.38 0.09 320);
+  --secondary-foreground: oklch(0.98 0.02 320);
+  --accent: oklch(0.85 0.09 310);
+  --accent-foreground: oklch(0.3 0.09 300);
+  --ring: oklch(0.6 0.15 300);
+  --sidebar-primary: oklch(0.43 0.15 300);
+  --sidebar-primary-foreground: oklch(0.98 0.02 300);
+}
+
+html.dark[data-accent-theme="amethyst"] {
+  --primary: oklch(0.7 0.15 300);
+  --primary-foreground: oklch(0.22 0.07 300);
+  --secondary: oklch(0.52 0.11 320);
+  --secondary-foreground: oklch(0.18 0.06 320);
+  --accent: oklch(0.86 0.1 310);
+  --accent-foreground: oklch(0.3 0.09 300);
+  --ring: oklch(0.7 0.15 300);
+  --sidebar-primary: oklch(0.7 0.15 300);
+  --sidebar-primary-foreground: oklch(0.22 0.07 300);
+}
+
+/* ---------------------------------- sunset --------------------------------- */
+/* Warm orange primary, terracotta secondary, peach accent. */
+
+html[data-accent-theme="sunset"] {
+  --primary: oklch(0.55 0.15 45);
+  --primary-foreground: oklch(0.99 0.01 80);
+  --secondary: oklch(0.45 0.13 30);
+  --secondary-foreground: oklch(0.99 0.01 40);
+  --accent: oklch(0.85 0.1 65);
+  --accent-foreground: oklch(0.35 0.1 45);
+  --ring: oklch(0.68 0.15 48);
+  --sidebar-primary: oklch(0.55 0.15 45);
+  --sidebar-primary-foreground: oklch(0.99 0.01 80);
+}
+
+html.dark[data-accent-theme="sunset"] {
+  --primary: oklch(0.75 0.15 48);
+  --primary-foreground: oklch(0.28 0.08 40);
+  --secondary: oklch(0.6 0.13 35);
+  --secondary-foreground: oklch(0.22 0.07 35);
+  --accent: oklch(0.86 0.1 65);
+  --accent-foreground: oklch(0.35 0.1 45);
+  --ring: oklch(0.75 0.15 48);
+  --sidebar-primary: oklch(0.75 0.15 48);
+  --sidebar-primary-foreground: oklch(0.28 0.08 40);
+}

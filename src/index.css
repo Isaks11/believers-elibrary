@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -130,7 +129,7 @@
   --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
 }
 
-.theme inline {
+@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -164,21 +163,110 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
-  --font-serif: var(--font-serif);
-
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
 
-  --shadow-2xs: var(--shadow-2xs);
-  --shadow-xs: var(--shadow-xs);
-  --shadow-sm: var(--shadow-sm);
-  --shadow: var(--shadow);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
-  --shadow-xl: var(--shadow-xl);
-  --shadow-2xl: var(--shadow-2xl);
+/*
+ * Extra breakpoint used by the layout (`hidden xs:inline`).
+ * Tailwind v4 has no `xs` variant by default, so it must be declared here.
+ */
+@theme {
+  --breakpoint-xs: 24rem;
+}
+
+/* ---------------------------------- base ---------------------------------- */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  /* Tone behind the phone-width app column so it reads as a frame, not a gap. */
+  background-color: var(--muted);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100%;
+}
+
+::selection {
+  background-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  color: var(--accent-foreground);
+}
+
+/* Thin, subtle scrollbars instead of the default browser chrome. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Used by the horizontal filter/ chip rows (`flex overflow-x-auto no-scrollbar`). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * `.app-shell` is the phone-width app frame.
+ *
+ * The `transform` makes it the containing block for every `position: fixed`
+ * descendant, so the brand badge, side shortcuts, FAB, page overlays and
+ * gradient footers stay pinned inside the 448px column instead of flying out
+ * to the browser edges on wide screens.
+ */
+.app-shell {
+  transform: translate3d(0, 0, 0);
+  overscroll-behavior-y: none;
+}
+
+/*
+ * The shell scrolls its `<main>` internally (it has a fixed viewport height),
+ * so `min-h-screen` inside a page would otherwise create a second,
+ * viewport-height scroll area on top of the shell's own scrollbar.
+ */
+.app-shell .min-h-screen {
+  min-height: 100%;
+}
+
+/*
+ * Dialogs and sheets are portaled to <body>, outside the shell. On wide
+ * screens keep them the width of the phone frame so they read as part of the
+ * app instead of sprawling across the browser. On phones the existing
+ * `max-w-[calc(100%-2rem)]` still applies.
+ */
+@media (min-width: 28rem) {
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"] {
+    max-width: calc(28rem - 2rem);
+  }
+
+  /* Full-bleed sheets (`inset-x-0`, e.g. the bottom upload sheet). */
+  [data-slot="sheet-content"].inset-x-0 {
+    left: calc(50% - 14rem);
+    right: calc(50% - 14rem);
+  }
 }

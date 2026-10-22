@@ -3,10 +3,17 @@ export type UrgencyLevel = 'critical' | 'daily' | 'community'
 export type NewsCategory = 'global' | 'church' | 'youth' | 'outreach'
 export type AlertStatus = 'active' | 'answered' | 'archived'
 
+export interface LibraryChapter {
+  title: string
+  content: string
+}
+
 export interface LibraryItem {
   id: string
   title: string
   author: string
+  publisher?: string
+  license?: string
   type: MediaType
   category: string
   description: string
@@ -14,6 +21,11 @@ export interface LibraryItem {
   pages?: number
   thumbnail?: string
   content?: string
+  chapters?: LibraryChapter[]
+  fileUrl?: string
+  fileName?: string
+  approvalStatus?: 'approved' | 'pending' | 'rejected'
+  uploadedBy?: string
   featured?: boolean
   bookmarked?: boolean
   progress?: number

@@ -10,7 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Bell, AlertTriangle, Newspaper, Clock, Heart, Share2, Megaphone, X, ChevronRight, Zap, Bookmark } from 'lucide-react'
 import { toast } from 'sonner'
 import { PrayerAlert, NewsItem, UrgencyLevel, NewsCategory } from '@/types/library-news'
-import { getPrayerAlerts, savePrayerAlerts, getNewsItems, saveNewsItems, toggleBookmark, getUserStats } from '@/data/mockFaithData'
+import { getPrayerAlerts, savePrayerAlerts, getNewsItems, toggleBookmark, getUserStats, syncFaithDataFromServer } from '@/data/mockFaithData'
+import { addPersonalPrayer } from '@/data/journalData'
+import { getDailyReminderPrefs, saveDailyReminderPrefs } from '@/data/readingPlans'
+import {
+  requestNotificationPermission,
+  checkAndFireDailyReminder,
+  isStandalonePwa,
+} from '@/lib/notifications'
+import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
 
 const urgencyConfig: Record<UrgencyLevel, { label: string; color: string; bg: string; icon: React.ElementType }> = {
@@ -25,21 +33,29 @@ const categoryColors: Record<NewsCategory, string> = {
 }
 
 export function PrayerAlertsNews() {
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<'prayers' | 'news'>('prayers')
-  const [alerts, setAlerts] = useState<PrayerAlert[]>([])
-  const [news, setNews] = useState<NewsItem[]>([])
+  const [alerts, setAlerts] = useState<PrayerAlert[]>(() => getPrayerAlerts())
+  const [news, setNews] = useState<NewsItem[]>(() => getNewsItems())
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null)
   const [showPrayerForm, setShowPrayerForm] = useState(false)
   const [prayerTitle, setPrayerTitle] = useState('')
   const [prayerDesc, setPrayerDesc] = useState('')
   const [prayerUrgency, setPrayerUrgency] = useState<UrgencyLevel>('community')
   const [newsFilter, setNewsFilter] = useState<'all' | NewsCategory>('all')
-  const [bookmarks, setBookmarks] = useState<string[]>([])
+  const [bookmarks, setBookmarks] = useState<string[]>(() => getUserStats().bookmarks)
+  // Shared daily reminder state (same `daily_reminder_prefs_v1` store as Devotional)
+  const [reminderEnabled, setReminderEnabled] = useState(() => getDailyReminderPrefs().enabled)
 
   useEffect(() => {
     setAlerts(getPrayerAlerts())
     setNews(getNewsItems())
     setBookmarks(getUserStats().bookmarks)
+    syncFaithDataFromServer().then((synced) => {
+      setAlerts(synced.prayerAlerts)
+      setNews(synced.newsItems)
+      setBookmarks(synced.bookmarks)
+    })
   }, [])
 
   const handlePray = (id: string) => {
@@ -56,12 +72,32 @@ export function PrayerAlertsNews() {
     toast.success(alert?.userPrayed ? 'Prayer counted. God bless you!' : 'Prayer removed')
   }
 
-  const handleReminder = (id: string) => {
-    const updated = alerts.map(a => a.id === id ? { ...a, reminderEnabled: !a.reminderEnabled } : a)
-    setAlerts(updated)
-    savePrayerAlerts(updated)
-    const alert = updated.find(a => a.id === id)
-    toast.success(alert?.reminderEnabled ? 'Reminder enabled' : 'Reminder disabled')
+  const handleReminder = async (enabled: boolean) => {
+    // Same permission flow & shared prefs store as the Devotional reminders tab
+    const prefs = getDailyReminderPrefs()
+    if (enabled) {
+      const permission = await requestNotificationPermission()
+      if (permission === 'granted') {
+        saveDailyReminderPrefs({ ...prefs, enabled: true })
+        setReminderEnabled(true)
+        checkAndFireDailyReminder()
+        toast.success(`Daily prayer reminder enabled for ${prefs.time} (${prefs.timezone})`)
+      } else {
+        saveDailyReminderPrefs({ ...prefs, enabled: false })
+        setReminderEnabled(false)
+        toast.info(
+          permission === 'denied'
+            ? 'Notifications are blocked for this app. Allow them in your browser/site settings to receive the daily prayer reminder' +
+                (isStandalonePwa() ? ' — on iPhone, open Settings ▸ Notifications and enable this app.' : '.')
+            : 'Notification permission was not granted, so the reminder was not enabled. You can allow notifications in your browser/site settings' +
+                (isStandalonePwa() ? ' — on iPhone, allow them in Settings ▸ Notifications for this app.' : '.')
+        )
+      }
+    } else {
+      saveDailyReminderPrefs({ ...prefs, enabled: false })
+      setReminderEnabled(false)
+      toast.info('Daily prayer reminder paused')
+    }
   }
 
   const handleSubmitPrayer = () => {
@@ -70,17 +106,22 @@ export function PrayerAlertsNews() {
       return
     }
     const newAlert: PrayerAlert = {
-      id: `pr-${Date.now()}`, title: prayerTitle, description: prayerDesc,
+      id: `pr-${Date.now()}`, title: prayerTitle.trim(), description: prayerDesc.trim(),
       urgency: prayerUrgency, prayerCount: 0, userPrayed: false, status: 'active',
-      createdAt: new Date().toISOString(), reminderEnabled: false, submittedBy: 'You',
+      createdAt: new Date().toISOString(), reminderEnabled: false, submittedBy: user?.name || 'You',
     }
     const updated = [newAlert, ...alerts]
     setAlerts(updated)
     savePrayerAlerts(updated)
+    addPersonalPrayer({
+      title: prayerTitle.trim(),
+      body: prayerDesc.trim(),
+      category: 'Community',
+    })
     setShowPrayerForm(false)
     setPrayerTitle('')
     setPrayerDesc('')
-    toast.success('Prayer request submitted!')
+    toast.success('Prayer request submitted & added to your prayer list!')
   }
 
   const filteredNews = newsFilter === 'all' ? news : news.filter(n => n.category === newsFilter)
@@ -136,8 +177,8 @@ export function PrayerAlertsNews() {
                           <UrgIcon className="w-3 h-3" /> {config.label}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Switch checked={alert.reminderEnabled} onCheckedChange={() => handleReminder(alert.id)} className="scale-75" />
-                          <Bell className={cn("w-3.5 h-3.5", alert.reminderEnabled ? "text-primary" : "text-muted-foreground")} />
+                          <Switch checked={reminderEnabled} onCheckedChange={handleReminder} className="scale-75" aria-label="Daily prayer reminder" />
+                          <Bell className={cn("w-3.5 h-3.5", reminderEnabled ? "text-primary" : "text-muted-foreground")} />
                         </div>
                       </div>
                       <div>

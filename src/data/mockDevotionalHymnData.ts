@@ -1,6 +1,11 @@
 import { DevotionalEntry, Hymn, BibleVersion, MONTHS, DAYS_OF_WEEK } from '@/types/devotional-hymn'
+import { supabase } from '@/lib/supabase'
+import { recordWriteOutcome, recordWriteError } from '@/lib/syncHealth'
 
-const DEVOTIONALS_KEY = 'gebeya-devotionals'
+const DEVOTIONALS_KEY = 'gebeya-devotionals-v2'
+const DEVOTIONAL_COMPLETED_KEY = 'devotional_completed_map'
+const DEVOTIONAL_BOOKMARKS_KEY = 'devotional_bookmarks_list'
+const HYMN_FAVORITES_KEY = 'hymn_favorites_list'
 const HYMNS_KEY = 'gebeya-hymns'
 
 const VERSION_TEXTS: Record<string, string> = {
@@ -183,10 +188,12 @@ Carve out a quiet space today. Still your soul, quiet your mind, and know that H
   },
 ]
 
+let cachedSeedDevotionals: DevotionalEntry[] | null = null
+
 function buildSeedDevotionals(): DevotionalEntry[] {
+  if (cachedSeedDevotionals) return cachedSeedDevotionals
   const entries: DevotionalEntry[] = []
   const yearByIndex = [2024, 2025, 2026]
-  const today = new Date()
   let counter = 0
 
   yearByIndex.forEach((year) => {
@@ -194,12 +201,11 @@ function buildSeedDevotionals(): DevotionalEntry[] {
     for (let m = startMonth; m < 12; m += 1) {
       const monthName = MONTHS[m]
       const daysInMonth = new Date(year, m + 1, 0).getDate()
-      for (let d = 1; d <= daysInMonth; d += 3) {
+      for (let d = 1; d <= daysInMonth; d += 1) {
         const date = new Date(year, m, d)
         const dayOfWeek = DAYS_OF_WEEK[(date.getDay() + 6) % 7]
         const template = BODIES[counter % BODIES.length]
         const verse = VERSES[counter % VERSES.length]
-        const isPast = date.getTime() < today.getTime()
         entries.push({
           id: `dev-${year}-${m + 1}-${d}`,
           year,
@@ -217,62 +223,252 @@ function buildSeedDevotionals(): DevotionalEntry[] {
           author: template.author,
           readTimeMinutes: 4 + (counter % 3),
           tags: template.tags,
-          isCompleted: isPast ? counter % 2 === 0 : false,
+          // Never seed fake completions — only real user actions mark a devotional completed.
+          isCompleted: false,
           isBookmarked: false,
         })
         counter += 1
       }
     }
   })
+  cachedSeedDevotionals = entries
   return entries
 }
 
-function load<T>(key: string, seed: () => T): T {
+export function getCompletedDevotionalMap(): Record<string, string> {
   try {
-    const raw = localStorage.getItem(key)
-    if (raw) return JSON.parse(raw) as T
+    const raw = localStorage.getItem(DEVOTIONAL_COMPLETED_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
-    /* corrupted storage falls back to seed */
+    return {}
   }
-  const seeded = seed()
-  try { localStorage.setItem(key, JSON.stringify(seeded)) } catch { /* storage full */ }
-  return seeded
+}
+
+export function saveCompletedDevotionalMap(map: Record<string, string>) {
+  try {
+    localStorage.setItem(DEVOTIONAL_COMPLETED_KEY, JSON.stringify(map))
+  } catch { /* storage full */ }
+}
+
+export function getBookmarkedDevotionalIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DEVOTIONAL_BOOKMARKS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export function saveBookmarkedDevotionalIds(ids: string[]) {
+  try {
+    localStorage.setItem(DEVOTIONAL_BOOKMARKS_KEY, JSON.stringify(ids))
+  } catch { /* storage full */ }
+}
+
+export function getFavoriteHymnIds(): string[] {
+  try {
+    const raw = localStorage.getItem(HYMN_FAVORITES_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export function saveFavoriteHymnIds(ids: string[]) {
+  try {
+    localStorage.setItem(HYMN_FAVORITES_KEY, JSON.stringify(ids))
+  } catch { /* storage full */ }
+}
+
+function loadCustomDevotionals(): DevotionalEntry[] {
+  try {
+    const raw = localStorage.getItem(DEVOTIONALS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 function persist<T>(key: string, value: T) {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* storage full */ }
 }
 
-export const getDevotionals = () => load<DevotionalEntry[]>(DEVOTIONALS_KEY, buildSeedDevotionals)
-export const saveDevotionals = (items: DevotionalEntry[]) => persist(DEVOTIONALS_KEY, items)
-export const addDevotional = (item: DevotionalEntry) => {
-  const updated = [item, ...getDevotionals()]
-  saveDevotionals(updated)
-  return updated
-}
-export const updateDevotional = (id: string, patch: Partial<DevotionalEntry>) => {
-  const updated = getDevotionals().map(d => (d.id === id ? { ...d, ...patch } : d))
-  saveDevotionals(updated)
-  return updated
-}
-export const deleteDevotional = (id: string) => {
-  const updated = getDevotionals().filter(d => d.id !== id)
-  saveDevotionals(updated)
-  return updated
+export const getDevotionals = (): DevotionalEntry[] => {
+  const completedMap = getCompletedDevotionalMap()
+  const bookmarkedSet = new Set(getBookmarkedDevotionalIds())
+  const custom = loadCustomDevotionals()
+  const base = buildSeedDevotionals()
+  const merged = [...custom, ...base]
+  return merged.map((d) => ({
+    ...d,
+    isCompleted: Boolean(completedMap[d.id]),
+    isBookmarked: bookmarkedSet.has(d.id),
+  }))
 }
 
-export const getHymns = () => load<Hymn[]>(HYMNS_KEY, () => HYMN_CONTENT)
-export const saveHymns = (items: Hymn[]) => persist(HYMNS_KEY, items)
+export const saveDevotionals = (items: DevotionalEntry[]) => {
+  const completedMap: Record<string, string> = {}
+  const existingMap = getCompletedDevotionalMap()
+  const bookmarked: string[] = []
+  items.forEach((d) => {
+    if (d.isCompleted) {
+      const mIdx = MONTHS.indexOf(d.month)
+      const fallbackDate = `${d.year}-${String(mIdx + 1).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`
+      completedMap[d.id] = existingMap[d.id] || fallbackDate
+    }
+    if (d.isBookmarked) bookmarked.push(d.id)
+  })
+  saveCompletedDevotionalMap(completedMap)
+  saveBookmarkedDevotionalIds(bookmarked)
+}
+
+export const addDevotional = (item: DevotionalEntry) => {
+  const custom = [item, ...loadCustomDevotionals()]
+  persist(DEVOTIONALS_KEY, custom)
+  return getDevotionals()
+}
+
+export const updateDevotional = (id: string, patch: Partial<DevotionalEntry>) => {
+  const all = getDevotionals()
+  const target = all.find((d) => d.id === id)
+
+  if (typeof patch.isCompleted === 'boolean' && target) {
+    const completedMap = getCompletedDevotionalMap()
+    const mIdx = MONTHS.indexOf(target.month)
+    const entryDate = `${target.year}-${String(mIdx + 1).padStart(2, '0')}-${String(target.day).padStart(2, '0')}`
+    if (patch.isCompleted) {
+      const todayIso = new Date().toISOString().slice(0, 10)
+      completedMap[id] = todayIso
+    } else {
+      delete completedMap[id]
+    }
+    saveCompletedDevotionalMap(completedMap)
+
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        const uid = data.session?.user?.id
+        if (!uid || !supabase) return
+        if (patch.isCompleted) {
+          supabase
+            .from('devotional_progress')
+            .upsert({
+              user_id: uid,
+              devotional_id: id,
+              entry_date: entryDate,
+              completed_at: new Date().toISOString(),
+            })
+            .then((res) => recordWriteOutcome('devotionals', res), (err) => recordWriteError('devotionals', err))
+        } else {
+          supabase
+            .from('devotional_progress')
+            .delete()
+            .eq('user_id', uid)
+            .eq('devotional_id', id)
+            .then((res) => recordWriteOutcome('devotionals', res), (err) => recordWriteError('devotionals', err))
+        }
+      })
+    }
+  }
+
+  if (typeof patch.isBookmarked === 'boolean') {
+    const current = new Set(getBookmarkedDevotionalIds())
+    if (patch.isBookmarked) current.add(id)
+    else current.delete(id)
+    saveBookmarkedDevotionalIds(Array.from(current))
+
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        const uid = data.session?.user?.id
+        if (!uid || !supabase) return
+        if (patch.isBookmarked) {
+          supabase
+            .from('bookmarks')
+            .upsert({ user_id: uid, item_type: 'devotional', item_id: id })
+            .then((res) => recordWriteOutcome('devotionals', res), (err) => recordWriteError('devotionals', err))
+        } else {
+          supabase
+            .from('bookmarks')
+            .delete()
+            .eq('user_id', uid)
+            .eq('item_type', 'devotional')
+            .eq('item_id', id)
+            .then((res) => recordWriteOutcome('devotionals', res), (err) => recordWriteError('devotionals', err))
+        }
+      })
+    }
+  }
+
+  return getDevotionals()
+}
+
+export const deleteDevotional = (id: string) => {
+  const custom = loadCustomDevotionals().filter((d) => d.id !== id)
+  persist(DEVOTIONALS_KEY, custom)
+  return getDevotionals()
+}
+
+export const getHymns = (): Hymn[] => {
+  const favs = new Set(getFavoriteHymnIds())
+  let custom: Hymn[] = []
+  try {
+    const raw = localStorage.getItem(HYMNS_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    if (Array.isArray(parsed)) {
+      custom = parsed.filter((h: Hymn) => !HYMN_CONTENT.some((seed) => seed.id === h.id))
+    }
+  } catch { /* ignore */ }
+  return [...custom, ...HYMN_CONTENT].map((h) => ({
+    ...h,
+    isFavorite: favs.has(h.id),
+  }))
+}
+
+export const saveHymns = (items: Hymn[]) => {
+  const favs = items.filter((h) => h.isFavorite).map((h) => h.id)
+  saveFavoriteHymnIds(favs)
+}
+
 export const addHymn = (item: Hymn) => {
   const updated = [item, ...getHymns()]
-  saveHymns(updated)
-  return updated
+  persist(HYMNS_KEY, updated)
+  return getHymns()
 }
+
 export const updateHymn = (id: string, patch: Partial<Hymn>) => {
-  const updated = getHymns().map(h => (h.id === id ? { ...h, ...patch } : h))
-  saveHymns(updated)
-  return updated
+  if (typeof patch.isFavorite === 'boolean') {
+    const favs = new Set(getFavoriteHymnIds())
+    if (patch.isFavorite) favs.add(id)
+    else favs.delete(id)
+    saveFavoriteHymnIds(Array.from(favs))
+
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        const uid = data.session?.user?.id
+        if (!uid || !supabase) return
+        if (patch.isFavorite) {
+          supabase
+            .from('bookmarks')
+            .upsert({ user_id: uid, item_type: 'hymn', item_id: id })
+            .then((res) => recordWriteOutcome('devotionals', res), (err) => recordWriteError('devotionals', err))
+        } else {
+          supabase
+            .from('bookmarks')
+            .delete()
+            .eq('user_id', uid)
+            .eq('item_type', 'hymn')
+            .eq('item_id', id)
+            .then((res) => recordWriteOutcome('devotionals', res), (err) => recordWriteError('devotionals', err))
+        }
+      })
+    }
+  }
+  return getHymns()
 }
+
 export const deleteHymn = (id: string) => {
   const updated = getHymns().filter(h => h.id !== id)
   saveHymns(updated)
