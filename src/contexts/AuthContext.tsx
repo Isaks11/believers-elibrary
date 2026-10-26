@@ -118,24 +118,51 @@ type DemoAdminConfig = {
 };
 
 /**
+ * Built-in credentials for the demo administrator.
+ *
+ * Only used by `npm run dev` (Vite's DEV flag); production builds have no demo
+ * account unless `VITE_DEMO_ADMIN_ENABLED=true` and both credentials are set.
+ * These are intentionally public demo credentials, not a secret.
+ */
+const DEMO_ADMIN_DEFAULTS = {
+  email: 'demo.admin@believerslibrary.com',
+  password: 'DemoAdmin2026!',
+  name: 'Demo Admin',
+} as const;
+
+/**
  * Optional device-local demo administrator.
  *
- * Enabled only when `VITE_DEMO_ADMIN_ENABLED=true` **and** both credentials are
- * set, so a normal build has no demo account at all. The demo session never
- * touches Supabase Auth (no server session, no profiles row) — it exists so the
- * Admin CMS can be reviewed locally. Keep the flag off in production.
+ * The explicit `VITE_DEMO_ADMIN_*` values always win. When they are absent, the
+ * public demo account above is enabled automatically in development only, so a
+ * fresh clone can review the Admin CMS without any `.env` setup. Production
+ * builds get no demo account unless explicitly opted in.
+ *
+ * The demo session never touches Supabase Auth (no server session, no profiles
+ * row) — it is device-local only.
  */
 function demoAdminConfig(): DemoAdminConfig | null {
-  const enabled =
-    (import.meta.env.VITE_DEMO_ADMIN_ENABLED as string | undefined)?.trim().toLowerCase() === 'true';
-  const email = (import.meta.env.VITE_DEMO_ADMIN_EMAIL as string | undefined)?.trim().toLowerCase();
-  const password = import.meta.env.VITE_DEMO_ADMIN_PASSWORD as string | undefined;
-  if (!enabled || !email || !password) return null;
+  const rawEnabled = (import.meta.env.VITE_DEMO_ADMIN_ENABLED as string | undefined)
+    ?.trim()
+    .toLowerCase();
+  // An explicit flag always wins (so `false` can opt out of the dev default).
+  const enabled = rawEnabled ? rawEnabled === 'true' : import.meta.env.DEV;
+  if (!enabled) return null;
+
+  const email = (
+    (import.meta.env.VITE_DEMO_ADMIN_EMAIL as string | undefined)?.trim() ||
+    (import.meta.env.DEV ? DEMO_ADMIN_DEFAULTS.email : '')
+  ).toLowerCase();
+  const password =
+    (import.meta.env.VITE_DEMO_ADMIN_PASSWORD as string | undefined) ||
+    (import.meta.env.DEV ? DEMO_ADMIN_DEFAULTS.password : '');
+  if (!email || !password) return null;
+
   return {
     id: 'demo-admin-local',
     email,
     password,
-    name: (import.meta.env.VITE_DEMO_ADMIN_NAME as string | undefined)?.trim() || 'Demo Admin',
+    name: (import.meta.env.VITE_DEMO_ADMIN_NAME as string | undefined)?.trim() || DEMO_ADMIN_DEFAULTS.name,
   };
 }
 
