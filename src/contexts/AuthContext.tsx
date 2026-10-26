@@ -22,6 +22,12 @@ export type User = {
   avatar?: string;
   /** Authoritative role: `profiles.role` from Postgres (server-enforced by RLS). */
   role: UserRole;
+  /**
+   * True for the optional, env-gated demo administrator. Demo sessions are
+   * device-local only (no Supabase session), so they must never be enabled in
+   * production — see `demoAdminConfig`.
+   */
+  isDemo?: boolean;
 };
 
 export type LoginResult = { ok: boolean; message?: string };
@@ -104,6 +110,35 @@ function toRegistryRole(role: UserRole): 'user' | 'admin' {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+type DemoAdminConfig = {
+  id: string;
+  email: string;
+  password: string;
+  name: string;
+};
+
+/**
+ * Optional device-local demo administrator.
+ *
+ * Enabled only when `VITE_DEMO_ADMIN_ENABLED=true` **and** both credentials are
+ * set, so a normal build has no demo account at all. The demo session never
+ * touches Supabase Auth (no server session, no profiles row) — it exists so the
+ * Admin CMS can be reviewed locally. Keep the flag off in production.
+ */
+function demoAdminConfig(): DemoAdminConfig | null {
+  const enabled =
+    (import.meta.env.VITE_DEMO_ADMIN_ENABLED as string | undefined)?.trim().toLowerCase() === 'true';
+  const email = (import.meta.env.VITE_DEMO_ADMIN_EMAIL as string | undefined)?.trim().toLowerCase();
+  const password = import.meta.env.VITE_DEMO_ADMIN_PASSWORD as string | undefined;
+  if (!enabled || !email || !password) return null;
+  return {
+    id: 'demo-admin-local',
+    email,
+    password,
+    name: (import.meta.env.VITE_DEMO_ADMIN_NAME as string | undefined)?.trim() || 'Demo Admin',
+  };
+}
+
 /** Bootstrap allow-list used only when the profiles table is unreachable or in local mode. */
 function envAdminEmails(): string[] {
   const raw = import.meta.env.VITE_ADMIN_EMAILS as string | undefined;
@@ -179,13 +214,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               syncUserPreferencesWithServer().catch(() => {});
             }
           } else if (!cancelled) {
-            // Check if a guest or local session was active
+            // Check if a guest or demo session was active. Real accounts always
+            // come from Supabase, so only these device-local sessions restore.
             const savedUser = localStorage.getItem(USER_KEY);
             if (savedUser) {
               try {
                 const parsed = JSON.parse(savedUser) as Partial<User>;
                 if (parsed.isGuest) {
                   setUser({ ...parsed, role: 'user' } as User);
+                } else if (parsed.isDemo) {
+                  const demo = demoAdminConfig();
+                  if (demo && parsed.email?.toLowerCase() === demo.email) {
+                    setUser({ ...parsed, role: 'admin', isDemo: true } as User);
+                  } else {
+                    localStorage.removeItem(USER_KEY);
+                  }
                 }
               } catch {
                 localStorage.removeItem(USER_KEY);
@@ -224,7 +267,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (savedUser) {
         try {
           const parsed = JSON.parse(savedUser) as Partial<User>;
-          setUser({ ...parsed, role: normalizeRole(parsed.role, 'user') } as User);
+          if (parsed.isDemo && !demoAdminConfig()) {
+            localStorage.removeItem(USER_KEY);
+          } else {
+            setUser({ ...parsed, role: normalizeRole(parsed.role, 'user') } as User);
+          }
         } catch {
           localStorage.removeItem(USER_KEY);
         }
@@ -264,6 +311,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const normalizedEmail = email?.trim().toLowerCase();
       if (!normalizedEmail) {
         return { ok: false, message: 'Email address is required.' };
+      }
+
+      // Optional demo administrator (env-gated, device-local only).
+      const demo = demoAdminConfig();
+      if (demo && normalizedEmail === demo.email) {
+        if (mode === 'signup') {
+          return {
+            ok: false,
+            message: 'This email is reserved for the demo administrator. Switch to Sign In to use it.',
+          };
+        }
+        if (password !== demo.password) {
+          return { ok: false, message: 'Incorrect password for the demo administrator account.' };
+        }
+        const registered = registerUser({
+          id: demo.id,
+          name: demo.name,
+          email: demo.email,
+          password: demo.password,
+          role: 'admin',
+        });
+        const demoUser: User = {
+          id: registered?.id ?? demo.id,
+          name: demo.name,
+          email: demo.email,
+          isGuest: false,
+          role: 'admin',
+          isDemo: true,
+        };
+        setUser(demoUser);
+        setIsRemote(false);
+        localStorage.setItem(USER_KEY, JSON.stringify(demoUser));
+        return { ok: true, message: 'Signed in with the demo administrator account.' };
       }
 
       // Unconfigured backend → deterministic device-local authentication.
