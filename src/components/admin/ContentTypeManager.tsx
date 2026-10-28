@@ -49,6 +49,7 @@ import { can, type PermissionAction } from '@/lib/permissions'
 import { useAuth } from '@/contexts/AuthContext'
 import { ContentEditorDialog } from '@/components/admin/ContentEditorDialog'
 import { BulkDevotionalDialog } from '@/components/admin/BulkDevotionalDialog'
+import { BulkHymnDialog } from '@/components/admin/BulkHymnDialog'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 10
@@ -111,6 +112,7 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
   const [scheduleValue, setScheduleValue] = useState('')
   const [deleteRow, setDeleteRow] = useState<AnyContentRecord | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkHymnOpen, setBulkHymnOpen] = useState(false)
 
   const role = user?.role
   const actor = { id: user?.id ?? null, role: role ?? 'user' }
@@ -289,6 +291,16 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
               variant="outline"
               className="h-8 gap-1.5 text-xs font-semibold"
               onClick={() => setBulkOpen(true)}
+            >
+              <Upload className="w-3.5 h-3.5" /> Bulk Upload
+            </Button>
+          )}
+          {type === 'hymn' && canCreate && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs font-semibold"
+              onClick={() => setBulkHymnOpen(true)}
             >
               <Upload className="w-3.5 h-3.5" /> Bulk Upload
             </Button>
@@ -639,6 +651,18 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
         <BulkDevotionalDialog
           open={bulkOpen}
           onClose={() => setBulkOpen(false)}
+          onChanged={() => {
+            void refresh()
+            onChanged?.()
+          }}
+        />
+      )}
+
+      {/* Bulk hymn upload */}
+      {type === 'hymn' && (
+        <BulkHymnDialog
+          open={bulkHymnOpen}
+          onClose={() => setBulkHymnOpen(false)}
           onChanged={() => {
             void refresh()
             onChanged?.()

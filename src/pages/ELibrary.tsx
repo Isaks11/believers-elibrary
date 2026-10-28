@@ -37,9 +37,34 @@ import {
   getUserStats,
   syncFaithDataFromServer,
 } from '@/data/mockFaithData'
+import {
+  loadPublishedVideos,
+  loadPublishedFaithResources,
+  cmsVideoToLibraryItem,
+  cmsFaithResourceToLibraryItem,
+} from '@/lib/contentSource'
 import { addJournalEntry } from '@/data/journalData'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
+
+function getYoutubeEmbedUrl(url?: string): string | null {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname.includes('youtube.com')) {
+      const v = parsed.searchParams.get('v')
+      if (v) return `https://www.youtube.com/embed/${v}`
+      if (parsed.pathname.startsWith('/embed/')) return url
+    }
+    if (parsed.hostname === 'youtu.be') {
+      const id = parsed.pathname.replace(/^\//, '')
+      if (id) return `https://www.youtube.com/embed/${id}`
+    }
+  } catch {
+    // not a valid url
+  }
+  return null
+}
 
 const typeIcons: Record<MediaType, React.ElementType> = {
   book: BookOpen,
@@ -86,13 +111,44 @@ export function ELibrary() {
   const mediaRef = useRef<HTMLAudioElement | HTMLVideoElement | null>(null)
 
   useEffect(() => {
-    setItems(getLibraryItems())
+    const baseItems = getLibraryItems()
+    setItems(baseItems)
     setBookmarks(getUserStats().bookmarks)
-    syncFaithDataFromServer().then((synced) => {
-      setItems(synced.libraryItems)
-      setBookmarks(synced.bookmarks)
-    })
+
+    let isMounted = true
+
+    async function loadAllContent() {
+      const synced = await syncFaithDataFromServer().catch(() => null)
+      const currentItems = synced ? synced.libraryItems : baseItems
+      if (synced && isMounted) {
+        setBookmarks(synced.bookmarks)
+      }
+
+      const [cmsVideos, cmsFaith] = await Promise.all([
+        loadPublishedVideos(),
+        loadPublishedFaithResources(),
+      ])
+
+      if (!isMounted) return
+
+      const mappedVideos = cmsVideos.map(cmsVideoToLibraryItem)
+      const mappedFaith = cmsFaith.map(cmsFaithResourceToLibraryItem)
+
+      const combined = [...mappedVideos, ...mappedFaith, ...currentItems]
+      const seen = new Set<string>()
+      const unique = combined.filter((item) => {
+        if (seen.has(item.id)) return false
+        seen.add(item.id)
+        return true
+      })
+
+      setItems(unique)
+    }
+
+    loadAllContent()
+
     return () => {
+      isMounted = false
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel()
       }
@@ -613,18 +669,28 @@ export function ELibrary() {
                       <>
                         {selectedItem.fileUrl ? (
                           selectedItem.type === 'video' ? (
-                            <video
-                              ref={mediaRef as React.RefObject<HTMLVideoElement>}
-                              src={selectedItem.fileUrl}
-                              controls
-                              className="w-full h-full rounded-lg"
-                              onTimeUpdate={(e) => {
-                                const el = e.currentTarget
-                                if (el.duration) {
-                                  updateProgress(selectedItem.id, Math.round((el.currentTime / el.duration) * 100))
-                                }
-                              }}
-                            />
+                            getYoutubeEmbedUrl(selectedItem.fileUrl) ? (
+                              <iframe
+                                src={getYoutubeEmbedUrl(selectedItem.fileUrl)!}
+                                title={selectedItem.title}
+                                className="w-full h-full rounded-lg border-0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            ) : (
+                              <video
+                                ref={mediaRef as React.RefObject<HTMLVideoElement>}
+                                src={selectedItem.fileUrl}
+                                controls
+                                className="w-full h-full rounded-lg"
+                                onTimeUpdate={(e) => {
+                                  const el = e.currentTarget
+                                  if (el.duration) {
+                                    updateProgress(selectedItem.id, Math.round((el.currentTime / el.duration) * 100))
+                                  }
+                                }}
+                              />
+                            )
                           ) : (
                             <audio
                               ref={mediaRef as React.RefObject<HTMLAudioElement>}
@@ -742,6 +808,16 @@ export function ELibrary() {
                     >
                       <Download className="w-4 h-4" />
                     </Button>
+                    {selectedItem.fileUrl && (selectedItem.type === 'material' || selectedItem.type === 'book') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 text-xs"
+                        onClick={() => window.open(selectedItem.fileUrl, '_blank', 'noopener,noreferrer')}
+                      >
+                        <FileText className="w-4 h-4" /> Open Link
+                      </Button>
+                    )}
                   </div>
                 </>
               )}

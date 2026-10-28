@@ -24,10 +24,12 @@ import {
   saveBookmarkedDevotionalIds, saveCompletedDevotionalMap,
 } from '@/data/mockDevotionalHymnData'
 import { cmsDevotionalToPageDevotional, loadPublishedDevotionals } from '@/lib/contentSource'
+import { loadPublishedReadingPlans, cmsPlanToPagePlan } from '@/lib/contentSource'
 import { computeStreak } from '@/lib/activity'
 import { addJournalEntry, getJournalEntries, updateJournalEntry } from '@/data/journalData'
 import {
   READING_PLANS,
+  type ReadingPlan,
   getReadingPlansProgress,
   toggleReadingPlanDay,
   getDailyReminderPrefs,
@@ -52,6 +54,7 @@ export function Devotional() {
   const [activePlanId, setActivePlanId] = useState<string>(READING_PLANS[0].id)
   const [reminderPrefs, setReminderPrefs] = useState(() => getDailyReminderPrefs())
   const [cmsDevotionals, setCmsDevotionals] = useState<DevotionalEntry[]>([])
+  const [cmsPlans, setCmsPlans] = useState<ReadingPlan[]>([])
   const [cmsDetailId, setCmsDetailId] = useState<string | null>(null)
 
   // Church-published devotionals for today (CMS). Fetched on mount and again
@@ -61,8 +64,10 @@ export function Devotional() {
     let cancelled = false
     const load = async () => {
       const rows = await loadPublishedDevotionals()
+      const planRows = await loadPublishedReadingPlans()
       if (!cancelled) {
         setCmsDevotionals(rows.map(cmsDevotionalToPageDevotional))
+        setCmsPlans(planRows.map(cmsPlanToPagePlan))
         setDevotionals(getDevotionals())
       }
     }
@@ -226,7 +231,12 @@ export function Devotional() {
     )
   }
 
-  const activePlan = READING_PLANS.find((p) => p.id === activePlanId) || READING_PLANS[0]
+  const allPlans = useMemo(() => {
+    if (cmsPlans.length === 0) return READING_PLANS
+    return [...cmsPlans, ...READING_PLANS]
+  }, [cmsPlans])
+
+  const activePlan = allPlans.find((p) => p.id === activePlanId) || allPlans[0]
   const activePlanCompletedMap = planProgress[activePlan.id]?.completedDays || {}
   const activePlanDoneCount = Object.keys(activePlanCompletedMap).length
 
@@ -435,9 +445,10 @@ export function Devotional() {
         {/* TAB 2: READING PLANS */}
         <TabsContent value="plans" className="pt-4 space-y-5">
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-            {READING_PLANS.map((plan) => {
+            {allPlans.map((plan) => {
               const done = Object.keys(planProgress[plan.id]?.completedDays || {}).length
               const active = plan.id === activePlan.id
+              const isCms = plan.id.startsWith('cms:')
               return (
                 <button
                   key={plan.id}
@@ -451,7 +462,7 @@ export function Devotional() {
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
-                      {plan.category}
+                      {isCms ? 'Church Plan' : plan.category}
                     </Badge>
                     <span className="text-[10px] font-bold opacity-80">
                       {done}/{plan.days.length} days

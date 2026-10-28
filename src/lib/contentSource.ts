@@ -30,7 +30,18 @@ import {
 } from '@/data/mockDevotionalHymnData'
 import { DAYS_OF_WEEK, MONTHS } from '@/types/devotional-hymn'
 import type { DevotionalEntry, Hymn } from '@/types/devotional-hymn'
-import type { ContentRecordMap, DevotionalRecord, HymnRecord } from '@/types/content'
+import type {
+  ContentEntityType,
+  ContentRecordMap,
+  DevotionalRecord,
+  HymnRecord,
+  ReadingPlanRecord,
+  VideoRecord,
+  FaithResourceRecord,
+} from '@/types/content'
+import type { ReadingPlan, ReadingPlanDay } from '@/data/readingPlans'
+import type { LibraryItem } from '@/types/library-news'
+import { parseBibleRef } from '@/lib/bibleService'
 
 /** In-memory cache TTL — five minutes. */
 export const CONTENT_SOURCE_TTL_MS = 5 * 60 * 1000
@@ -59,7 +70,7 @@ if (typeof window !== 'undefined') {
 // --- Internal cached read ----------------------------------------------------
 
 /** Published rows for a CMS-backed type, cached for `CONTENT_SOURCE_TTL_MS`. */
-async function loadPublishedRecords<K extends 'devotional' | 'hymn'>(
+async function loadPublishedRecords<K extends ContentEntityType>(
   type: K
 ): Promise<ContentRecordMap[K][]> {
   const key = `published:${type}`
@@ -186,6 +197,42 @@ export async function loadPublishedHymns(): Promise<HymnRecord[]> {
 }
 
 /**
+ * All published reading plans configured in the church CMS.
+ */
+export async function loadPublishedReadingPlans(): Promise<ReadingPlanRecord[]> {
+  try {
+    const rows = await loadPublishedRecords('reading_plan')
+    return rows
+  } catch {
+    return []
+  }
+}
+
+/**
+ * All published videos / recorded sermons configured in the church CMS.
+ */
+export async function loadPublishedVideos(): Promise<VideoRecord[]> {
+  try {
+    const rows = await loadPublishedRecords('video')
+    return rows
+  } catch {
+    return []
+  }
+}
+
+/**
+ * All published faith resources and study materials from the church CMS.
+ */
+export async function loadPublishedFaithResources(): Promise<FaithResourceRecord[]> {
+  try {
+    const rows = await loadPublishedRecords('faith_resource')
+    return rows
+  } catch {
+    return []
+  }
+}
+
+/**
  * Newest published devotional that carries a scripture verse
  * (`verse_text` + `verse_ref`), or `null` when there is none / on error —
  * callers fall back to their built-in verse.
@@ -285,4 +332,83 @@ export function cmsHymnToPageHymn(record: HymnRecord): Hymn {
   if (record.meter) hymn.meter = record.meter
   if (record.audio_url) hymn.audioUrl = record.audio_url
   return hymn
+}
+
+/**
+ * Maps a CMS Reading Plan record into the user-facing `ReadingPlan` interface.
+ */
+export function cmsPlanToPagePlan(record: ReadingPlanRecord): ReadingPlan {
+  const days: ReadingPlanDay[] =
+    record.structure && record.structure.length > 0
+      ? record.structure.map((step) => {
+          const parsed = parseBibleRef(step.scripture_ref || 'Psalms 23')
+          return {
+            dayNumber: step.day,
+            title: step.title || `Day ${step.day}`,
+            scriptureRef: step.scripture_ref || 'Psalms 23',
+            book: parsed?.book || 'Psalms',
+            chapter: parsed?.chapter || 23,
+            applicationPrompt:
+              step.reflection || step.reading || 'Reflect on this passage and pray for guidance today.',
+          }
+        })
+      : Array.from({ length: record.days || 7 }, (_, i) => ({
+          dayNumber: i + 1,
+          title: `Day ${i + 1}`,
+          scriptureRef: 'Psalms 23',
+          book: 'Psalms',
+          chapter: 23,
+          applicationPrompt: 'Take quiet time to meditate on God’s promises today.',
+        }))
+
+  return {
+    id: toPageId(record.id),
+    title: record.title,
+    subtitle: record.description || 'Church reading plan',
+    category: (record.category as any) || 'Purpose',
+    days,
+  }
+}
+
+/**
+ * Maps a CMS Video record into the user-facing `LibraryItem` interface.
+ */
+export function cmsVideoToLibraryItem(record: VideoRecord): LibraryItem {
+  const durationMin = record.duration_seconds ? Math.round(record.duration_seconds / 60) : 15
+  return {
+    id: toPageId(record.id),
+    title: record.title,
+    author: record.speaker || 'Church Media',
+    license: 'Church Ministry Distribution',
+    type: 'video',
+    category: record.video_category || 'Sermons',
+    duration: `${durationMin} min`,
+    description: record.description || record.title,
+    thumbnail:
+      record.thumbnail_url ||
+      'https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&q=80&w=600',
+    fileUrl: record.video_url,
+    approvalStatus: 'approved',
+    uploadedAt: record.published_at || record.created_at || new Date().toISOString().split('T')[0],
+  }
+}
+
+/**
+ * Maps a CMS Faith Resource record into the user-facing `LibraryItem` interface.
+ */
+export function cmsFaithResourceToLibraryItem(record: FaithResourceRecord): LibraryItem {
+  return {
+    id: toPageId(record.id),
+    title: record.title,
+    author: record.curated_by || 'Believers Resource Library',
+    license: 'Ministry Educational Resource',
+    type: 'material',
+    category: record.resource_type || 'Study Materials',
+    description: `${record.description || ''}${record.scripture_ref ? ` (Scripture: ${record.scripture_ref})` : ''}`.trim() || record.title,
+    thumbnail:
+      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&q=80&w=600',
+    fileUrl: record.resource_url,
+    approvalStatus: 'approved',
+    uploadedAt: record.published_at || record.created_at || new Date().toISOString().split('T')[0],
+  }
 }
