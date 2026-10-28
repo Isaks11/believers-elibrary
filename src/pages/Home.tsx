@@ -20,7 +20,7 @@ import { AppIcon } from '@/components/common/AppIcon';
 import { computeStreak, activeDaysThisWeek, countCompletedDevotionals } from '@/lib/activity';
 import { getDevotionals } from '@/data/mockDevotionalHymnData';
 import { loadDailyVerse } from '@/lib/contentSource';
-import { MONTHS } from '@/types/devotional-hymn';
+import { MONTHS, type DevotionalEntry } from '@/types/devotional-hymn';
 import { toast } from 'sonner';
 
 const DAILY_VERSE = {
@@ -62,7 +62,7 @@ export function Home() {
   const week = useMemo(() => activeDaysThisWeek(), []);
   const completedCount = useMemo(() => countCompletedDevotionals(), []);
 
-  const todayDevotional = useMemo(() => {
+  const [todayDevotional, setTodayDevotional] = useState<DevotionalEntry | null>(() => {
     const now = new Date();
     try {
       return (
@@ -73,6 +73,23 @@ export function Home() {
     } catch {
       return null;
     }
+  });
+
+  useEffect(() => {
+    const checkToday = () => {
+      const now = new Date();
+      const dev = getDevotionals().find(
+        (d) => d.year === now.getFullYear() && d.month === MONTHS[now.getMonth()] && d.day === now.getDate()
+      ) ?? null;
+      setTodayDevotional(dev);
+    };
+    checkToday();
+    window.addEventListener('cms:content-changed', checkToday);
+    window.addEventListener('storage', checkToday);
+    return () => {
+      window.removeEventListener('cms:content-changed', checkToday);
+      window.removeEventListener('storage', checkToday);
+    };
   }, []);
 
   const sections = [
@@ -163,12 +180,12 @@ export function Home() {
               )}
             </div>
             <h3 className="text-lg font-bold text-primary group-hover:text-primary/80">
-              {todayDevotional ? todayDevotional.title : 'Open the Devotional'}
+              {todayDevotional ? todayDevotional.title : 'Daily Devotional'}
             </h3>
             <p className="text-sm text-muted-foreground line-clamp-2">
               {todayDevotional
                 ? todayDevotional.keyThought
-                : 'Browse your reading plan, complete today’s entry, and carry God’s Word into your day.'}
+                : 'No devotional scheduled for today. Explore reading plans or check back as church admins publish new devotionals.'}
             </p>
             <div className="pt-2 flex items-center justify-between">
               {todayDevotional && todayDevotional.isCompleted ? (
@@ -181,7 +198,7 @@ export function Home() {
                 className="bg-primary hover:bg-primary/90"
                 onClick={(e) => { e.stopPropagation(); navigate('/devotional'); }}
               >
-                {todayDevotional?.isCompleted ? 'Review' : 'Continue Reading'}
+                {todayDevotional ? (todayDevotional.isCompleted ? 'Review' : 'Continue Reading') : 'Explore Devotionals'}
               </Button>
             </div>
           </CardContent>

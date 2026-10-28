@@ -35,6 +35,7 @@ import {
   ArchiveRestore,
   Trash2,
   Undo2,
+  Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { listContent, isScheduled, setStatus, deleteContent, type ContentSort } from '@/lib/contentAdmin'
@@ -47,6 +48,7 @@ import {
 import { can, type PermissionAction } from '@/lib/permissions'
 import { useAuth } from '@/contexts/AuthContext'
 import { ContentEditorDialog } from '@/components/admin/ContentEditorDialog'
+import { BulkDevotionalDialog } from '@/components/admin/BulkDevotionalDialog'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 10
@@ -108,6 +110,7 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
   const [scheduleRow, setScheduleRow] = useState<AnyContentRecord | null>(null)
   const [scheduleValue, setScheduleValue] = useState('')
   const [deleteRow, setDeleteRow] = useState<AnyContentRecord | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
 
   const role = user?.role
   const actor = { id: user?.id ?? null, role: role ?? 'user' }
@@ -279,15 +282,27 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
         <h3 className="text-sm font-bold text-primary uppercase">
           {meta.label} <span className="text-muted-foreground">({total})</span>
         </h3>
-        <Button
-          size="sm"
-          className="h-8 gap-1"
-          onClick={openNew}
-          disabled={!canCreate}
-          title={canCreate ? undefined : 'Your role cannot create content'}
-        >
-          <Plus className="w-3.5 h-3.5" /> New
-        </Button>
+        <div className="flex items-center gap-2">
+          {type === 'devotional' && canCreate && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs font-semibold"
+              onClick={() => setBulkOpen(true)}
+            >
+              <Upload className="w-3.5 h-3.5" /> Bulk Upload
+            </Button>
+          )}
+          <Button
+            size="sm"
+            className="h-8 gap-1"
+            onClick={openNew}
+            disabled={!canCreate}
+            title={canCreate ? undefined : 'Your role cannot create content'}
+          >
+            <Plus className="w-3.5 h-3.5" /> New
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -389,9 +404,15 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <h4 className="text-xs font-bold text-primary truncate max-w-[65%]">{row.title}</h4>
                     <StatusBadge row={row} />
+                    {type === 'devotional' && (row as any).devotional_date && (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono bg-secondary/50">
+                        {(row as any).devotional_date}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-[10px] text-muted-foreground">
                     v{row.version} • updated {formatDate(row.updated_at)}
+                    {type === 'devotional' && (row as any).verse_ref ? ` • ${(row as any).verse_ref}` : ''}
                     {row.category ? ` • ${row.category}` : ''}
                     {scheduled && row.scheduled_for
                       ? ` • goes live ${new Date(row.scheduled_for).toLocaleString()}`
@@ -612,6 +633,18 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk devotional upload */}
+      {type === 'devotional' && (
+        <BulkDevotionalDialog
+          open={bulkOpen}
+          onClose={() => setBulkOpen(false)}
+          onChanged={() => {
+            void refresh()
+            onChanged?.()
+          }}
+        />
+      )}
     </div>
   )
 }

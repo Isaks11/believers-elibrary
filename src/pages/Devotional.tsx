@@ -61,11 +61,24 @@ export function Devotional() {
     let cancelled = false
     const load = async () => {
       const rows = await loadPublishedDevotionals()
-      if (!cancelled) setCmsDevotionals(rows.map(cmsDevotionalToPageDevotional))
+      if (!cancelled) {
+        setCmsDevotionals(rows.map(cmsDevotionalToPageDevotional))
+        setDevotionals(getDevotionals())
+      }
     }
     void load()
+
+    const handleContentChange = () => {
+      setDevotionals(getDevotionals())
+      void load()
+    }
+    window.addEventListener('cms:content-changed', handleContentChange)
+    window.addEventListener('storage', handleContentChange)
+
     return () => {
       cancelled = true
+      window.removeEventListener('cms:content-changed', handleContentChange)
+      window.removeEventListener('storage', handleContentChange)
     }
   }, [year, month, selectedDay])
 
@@ -92,9 +105,17 @@ export function Devotional() {
     const targetYear = DEVOTIONAL_YEARS.includes(now.getFullYear())
       ? now.getFullYear()
       : DEVOTIONAL_YEARS[DEVOTIONAL_YEARS.length - 1]
+    const todayMonth = MONTHS[now.getMonth()]
+    const todayDay = now.getDate()
+    const todayEntry = devotionals.find(e => e.year === targetYear && e.month === todayMonth && e.day === todayDay) || cmsDevotionals[0]
+
     setYear(targetYear)
-    setMonth(MONTHS[now.getMonth()])
-    setSelectedDay(now.getDate())
+    setMonth(todayMonth)
+    if (todayEntry) {
+      setSelectedDay(todayEntry.day)
+    } else {
+      toast.info('No devotional has been published for today yet.')
+    }
   }
 
   // Progress stores are purely id-based (completed: id → date, bookmarks: id[]),
@@ -365,7 +386,13 @@ export function Devotional() {
                     return (
                       <button
                         key={i}
-                        onClick={() => hasEntry && setSelectedDay(dayNum)}
+                        onClick={() => {
+                          if (hasEntry) {
+                            setSelectedDay(dayNum)
+                          } else {
+                            toast.info(`No devotional scheduled for ${month} ${dayNum}.`)
+                          }
+                        }}
                         className={cn(
                           'aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 border transition-all relative',
                           hasEntry ? 'cursor-pointer hover:scale-105 active:scale-95' : 'opacity-30',
@@ -388,6 +415,14 @@ export function Devotional() {
               )
             })}
           </div>
+
+          {Object.values(monthEntries).filter(({ entry }) => entry).length === 0 && (
+            <div className="text-center py-6 px-4 bg-muted/20 rounded-2xl border border-dashed border-border/60">
+              <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+              <p className="text-sm font-medium text-muted-foreground">No devotionals scheduled for {month} {year}</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Devotionals configured by the church administrator in the Admin CMS will appear here.</p>
+            </div>
+          )}
 
           {/* Legend */}
           <div className="flex items-center justify-center gap-4 text-[10px] text-muted-foreground font-medium">

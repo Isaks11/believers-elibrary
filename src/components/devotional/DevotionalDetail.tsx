@@ -6,12 +6,13 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   ChevronLeft, Play, Pause, Music2, Share2, Bookmark, BookmarkCheck, Type,
-  CheckCircle2, Mic, NotebookPen, BookOpen, Clock, GitBranch, Heart
+  CheckCircle2, Mic, NotebookPen, BookOpen, Clock, GitBranch, Heart, Loader2
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { BIBLE_VERSIONS, BIBLE_VERSION_LABELS } from '@/types/devotional-hymn'
 import type { DevotionalEntry, BibleVersion } from '@/types/devotional-hymn'
+import { fetchVerseText } from '@/lib/bibleService'
 
 export function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }: {
   entry: DevotionalEntry
@@ -20,6 +21,8 @@ export function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBook
   onToggleBookmark: () => void
 }) {
   const [version, setVersion] = useState<BibleVersion>('KJV')
+  const [translations, setTranslations] = useState<Partial<Record<BibleVersion, string>>>(() => entry.bibleVersions || {})
+  const [loadingVerse, setLoadingVerse] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [fontSize, setFontSize] = useState(17)
   const [reflection, setReflection] = useState('')
@@ -28,8 +31,29 @@ export function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBook
 
   useEffect(() => {
     setVersion('KJV')
+    setTranslations(entry.bibleVersions || {})
     setReflection(localStorage.getItem(`reflection-${entry.id}`) ?? '')
-  }, [entry.id])
+  }, [entry.id, entry.bibleVersions])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!translations[version] && entry.scriptureRef) {
+      setLoadingVerse(true)
+      fetchVerseText(entry.scriptureRef, version)
+        .then((res) => {
+          if (!cancelled && res?.text) {
+            setTranslations((prev) => ({ ...prev, [version]: res.text }))
+          }
+          if (!cancelled) setLoadingVerse(false)
+        })
+        .catch(() => {
+          if (!cancelled) setLoadingVerse(false)
+        })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [version, entry.scriptureRef, translations])
 
   const togglePrayer = (i: number) => {
     setPrayersChecked(prev => prev.map((v, idx) => (idx === i ? !v : v)))
@@ -160,7 +184,14 @@ ${entry.bibleVersions[version] ?? ''}` })
               transition={{ duration: 0.2 }}
               className="text-xl font-serif italic text-primary leading-relaxed border-l-4 border-accent pl-4"
             >
-              "{entry.bibleVersions[version] ?? entry.bibleVersions.KJV}"
+              {loadingVerse ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground not-italic py-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                  Loading {BIBLE_VERSION_LABELS[version]} translation…
+                </div>
+              ) : (
+                `"${translations[version] ?? entry.bibleVersions[version] ?? entry.bibleVersions.KJV ?? Object.values(entry.bibleVersions)[0] ?? 'Scripture passage'}"`
+              )}
               <footer className="mt-2 text-sm not-italic font-bold text-muted-foreground">
                 {entry.scriptureRef} ({version})
               </footer>

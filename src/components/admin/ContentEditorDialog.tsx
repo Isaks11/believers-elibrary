@@ -40,6 +40,7 @@ import {
 import { can } from '@/lib/permissions'
 import { useAuth } from '@/contexts/AuthContext'
 import { RevisionHistoryDialog } from '@/components/admin/RevisionHistoryDialog'
+import { BibleReferencePicker } from '@/components/admin/BibleReferencePicker'
 import { cn } from '@/lib/utils'
 
 export type ContentEditorDialogProps = {
@@ -503,41 +504,55 @@ export function ContentEditorDialog({
                     className="min-h-[110px]"
                   />
                 </div>
+                {/* Structured Bible Reference Selection */}
                 <div>
-                  <FieldLabel>Verse Text</FieldLabel>
+                  <FieldLabel>Bible Scripture Reference *</FieldLabel>
+                  <BibleReferencePicker
+                    value={form.verse_ref}
+                    onChange={(ref) => set('verse_ref', ref)}
+                    onVerseTextFetched={(text) => set('verse_text', text)}
+                  />
+                </div>
+
+                <div>
+                  <FieldLabel>Scripture Quotation (Verse Text)</FieldLabel>
                   <Textarea
                     value={form.verse_text}
                     onChange={(e) => set('verse_text', e.target.value)}
-                    placeholder="“For God so loved…” (optional quotation)"
+                    placeholder="“For God so loved the world…” (populates automatically from Bible or type manually)"
                     className="min-h-[54px]"
                   />
                 </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <FieldLabel>Verse Ref *</FieldLabel>
-                    <Input
-                      value={form.verse_ref}
-                      onChange={(e) => set('verse_ref', e.target.value)}
-                      placeholder="John 3:16"
-                    />
+                    <FieldLabel>Primary Translation</FieldLabel>
+                    <Select
+                      value={form.translation || 'KJV'}
+                      onValueChange={(val) => set('translation', val)}
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Select translation" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="KJV">KJV (King James Version)</SelectItem>
+                        <SelectItem value="WEB">WEB (World English Bible)</SelectItem>
+                        <SelectItem value="ASV">ASV (American Standard Version)</SelectItem>
+                        <SelectItem value="BBE">BBE (Bible in Basic English)</SelectItem>
+                        <SelectItem value="ESV">ESV (English Standard Version)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <FieldLabel>Translation</FieldLabel>
+                    <FieldLabel>Devotional Date *</FieldLabel>
                     <Input
-                      value={form.translation}
-                      onChange={(e) => set('translation', e.target.value)}
-                      placeholder="KJV / ESV…"
+                      type="date"
+                      value={form.devotional_date}
+                      onChange={(e) => set('devotional_date', e.target.value)}
+                      className="h-9 text-xs"
                     />
+                    <span className="text-[10px] text-muted-foreground">The date this devotional will display for users.</span>
                   </div>
-                </div>
-                <div>
-                  <FieldLabel>Devotional Date</FieldLabel>
-                  <Input
-                    type="date"
-                    value={form.devotional_date}
-                    onChange={(e) => set('devotional_date', e.target.value)}
-                  />
-                  <span className="text-[10px] text-muted-foreground">Leave empty for evergreen content.</span>
                 </div>
               </>
             )}

@@ -605,7 +605,110 @@ export function createContent<K extends ContentEntityType>(
   }
 
   recordAudit(actor, 'create', type, id, { slug, title });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
+  }
   return { ok: true, record, errors: [] };
+}
+
+export interface BulkCreateResult<T> {
+  created: T[];
+  failedCount: number;
+  errors: { index: number; errors: string[] }[];
+}
+
+/**
+ * Bulk creates multiple content records at once (dual-writes to localStorage and Supabase).
+ * Used for bulk uploading devotionals with pre-assigned dates.
+ */
+export function bulkCreateContent<K extends ContentEntityType>(
+  type: K,
+  items: Array<ContentDraft<ContentRecordMap[K]> & { status?: ContentStatus }>,
+  actor: AuditActor
+): BulkCreateResult<ContentRecordMap[K]> {
+  const existingRows = readLocalRecords(type);
+  const now = new Date().toISOString();
+  const created: ContentRecordMap[K][] = [];
+  const errors: { index: number; errors: string[] }[] = [];
+
+  const newRecords: ContentRecordMap[K][] = [];
+  const takenSlugs = new Set(existingRows.map((r) => r.slug));
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const { status: itemStatus = 'published', ...draftPayload } = item;
+    const itemErrors = validateContent(type, draftPayload);
+    if (itemErrors.length > 0) {
+      errors.push({ index: i, errors: itemErrors });
+      continue;
+    }
+
+    const draft = draftPayload as unknown as Record<string, unknown>;
+    const title = String(draft.title ?? '').trim();
+    const id = generateId();
+
+    let base = slugify(title) || 'untitled';
+    let slug = base;
+    let n = 2;
+    while (takenSlugs.has(slug)) {
+      slug = `${base}-${n++}`;
+    }
+    takenSlugs.add(slug);
+
+    const isPub = itemStatus === 'published';
+    const record = {
+      ...defaultFields(type),
+      ...draft,
+      id,
+      slug,
+      status: itemStatus,
+      published_at: isPub ? now : null,
+      scheduled_for: null,
+      version: 1,
+      category: typeof draft.category === 'string' && draft.category ? draft.category : null,
+      tags: Array.isArray(draft.tags) ? draft.tags.map(String) : [],
+      author: typeof draft.author === 'string' && draft.author ? draft.author : null,
+      license_attribution:
+        typeof draft.license_attribution === 'string' && draft.license_attribution
+          ? draft.license_attribution
+          : null,
+      offline_policy: (draft.offline_policy as OfflinePolicy | undefined) || 'optional',
+      created_by: actor.id,
+      created_at: now,
+      updated_at: now,
+    } as unknown as ContentRecordMap[K];
+
+    newRecords.push(record);
+    created.push(record);
+  }
+
+  if (newRecords.length > 0) {
+    // 1. Dual-write to localStorage
+    writeLocalRecords(type, [...newRecords, ...existingRows]);
+
+    // 2. Best-effort Supabase bulk insert
+    if (isSupabaseConfigured && supabase && isServerBacked(type)) {
+      const payloads = newRecords.map((rec) => payloadFor(type, rec as unknown as AnyContentRecord));
+      bestEffortWrite(supabase.from(ContentTypeMeta[type].table).insert(payloads));
+    }
+
+    // 3. Record audit
+    recordAudit(actor, 'create', type, 'bulk', {
+      count: newRecords.length,
+      sample: newRecords.slice(0, 3).map((r) => r.slug),
+    });
+
+    // 4. Invalidate caches and notify app
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
+    }
+  }
+
+  return {
+    created,
+    failedCount: errors.length,
+    errors,
+  };
 }
 
 /**
@@ -662,6 +765,9 @@ export function updateContent<K extends ContentEntityType>(
   }
 
   recordAudit(actor, 'update', type, id, { version: record.version });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
+  }
   return { ok: true, record, errors: [] };
 }
 
@@ -763,6 +869,9 @@ export function setStatus<K extends ContentEntityType>(
     to: status,
     ...(scheduledFor ? { scheduled_for: scheduledFor } : {}),
   });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
+  }
   return { ok: true, errors: [] };
 }
 
@@ -859,6 +968,10 @@ export function deleteContent<K extends ContentEntityType>(
     bestEffortWrite(
       supabase.from('content_revisions').delete().eq('entity_type', type).eq('entity_id', id)
     );
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
   }
 
   return { ok: true, errors: [] };

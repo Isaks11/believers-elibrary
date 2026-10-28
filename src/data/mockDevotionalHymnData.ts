@@ -191,48 +191,8 @@ Carve out a quiet space today. Still your soul, quiet your mind, and know that H
 let cachedSeedDevotionals: DevotionalEntry[] | null = null
 
 function buildSeedDevotionals(): DevotionalEntry[] {
-  if (cachedSeedDevotionals) return cachedSeedDevotionals
-  const entries: DevotionalEntry[] = []
-  const yearByIndex = [2024, 2025, 2026]
-  let counter = 0
-
-  yearByIndex.forEach((year) => {
-    const startMonth = year === 2024 ? 5 : 0
-    for (let m = startMonth; m < 12; m += 1) {
-      const monthName = MONTHS[m]
-      const daysInMonth = new Date(year, m + 1, 0).getDate()
-      for (let d = 1; d <= daysInMonth; d += 1) {
-        const date = new Date(year, m, d)
-        const dayOfWeek = DAYS_OF_WEEK[(date.getDay() + 6) % 7]
-        const template = BODIES[counter % BODIES.length]
-        const verse = VERSES[counter % VERSES.length]
-        entries.push({
-          id: `dev-${year}-${m + 1}-${d}`,
-          year,
-          month: monthName,
-          day: d,
-          dayOfWeek,
-          title: template.title,
-          theme: template.theme,
-          scriptureRef: verse.ref,
-          bibleVersions: { ...verse.texts },
-          mainBody: template.mainBody,
-          keyThought: template.keyThought,
-          prayer: template.prayer,
-          prayerPoints: template.prayerPoints,
-          author: template.author,
-          readTimeMinutes: 4 + (counter % 3),
-          tags: template.tags,
-          // Never seed fake completions — only real user actions mark a devotional completed.
-          isCompleted: false,
-          isBookmarked: false,
-        })
-        counter += 1
-      }
-    }
-  })
-  cachedSeedDevotionals = entries
-  return entries
+  // Only devotionals configured by the admin are displayed
+  return []
 }
 
 export function getCompletedDevotionalMap(): Record<string, string> {
@@ -283,6 +243,61 @@ export function saveFavoriteHymnIds(ids: string[]) {
   } catch { /* storage full */ }
 }
 
+function loadCmsDevotionals(): DevotionalEntry[] {
+  try {
+    const raw = localStorage.getItem('cms_devotionals_v1')
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const completedMap = getCompletedDevotionalMap()
+    const bookmarkedSet = new Set(getBookmarkedDevotionalIds())
+
+    // Only published devotionals configured by admin
+    const published = parsed.filter((r) => r && r.status === 'published')
+    return published.map((record) => {
+      const id = record.id.startsWith('cms:') ? record.id : `cms:${record.id}`
+      const dateStr = record.devotional_date || record.published_at || record.created_at || ''
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr)
+      const now = new Date()
+      const year = match ? Number(match[1]) : now.getFullYear()
+      const rawMonthIndex = match ? Number(match[2]) - 1 : now.getMonth()
+      const monthIndex = rawMonthIndex >= 0 && rawMonthIndex < 12 ? rawMonthIndex : now.getMonth()
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+      const rawDay = match ? Number(match[3]) : now.getDate()
+      const day = Math.min(Math.max(rawDay, 1), daysInMonth)
+      const dObj = new Date(year, monthIndex, day)
+      const month = MONTHS[monthIndex] || MONTHS[now.getMonth()]
+      const dayOfWeek = DAYS_OF_WEEK[(dObj.getDay() + 6) % 7]
+      const body = record.body || ''
+      const paragraphs = body.split(/\n\s*\n/).map((p: string) => p.trim()).filter(Boolean)
+      const wordCount = body.split(/\s+/).filter(Boolean).length
+
+      return {
+        id,
+        year,
+        month,
+        day,
+        dayOfWeek,
+        title: record.title || 'Untitled Devotional',
+        theme: (record.category && record.category.trim()) || 'Devotion',
+        scriptureRef: record.verse_ref || '',
+        bibleVersions: record.verse_text ? { KJV: record.verse_text } : {},
+        mainBody: body,
+        keyThought: paragraphs[0] ?? body,
+        prayer: '',
+        prayerPoints: [],
+        author: (record.author && record.author.trim()) || 'Church Library',
+        readTimeMinutes: Math.max(1, Math.round(wordCount / 200)),
+        tags: Array.isArray(record.tags) ? record.tags : [],
+        isCompleted: Boolean(completedMap[id]),
+        isBookmarked: bookmarkedSet.has(id),
+      }
+    })
+  } catch {
+    return []
+  }
+}
+
 function loadCustomDevotionals(): DevotionalEntry[] {
   try {
     const raw = localStorage.getItem(DEVOTIONALS_KEY)
@@ -301,8 +316,9 @@ export const getDevotionals = (): DevotionalEntry[] => {
   const completedMap = getCompletedDevotionalMap()
   const bookmarkedSet = new Set(getBookmarkedDevotionalIds())
   const custom = loadCustomDevotionals()
+  const cms = loadCmsDevotionals()
   const base = buildSeedDevotionals()
-  const merged = [...custom, ...base]
+  const merged = [...cms, ...custom, ...base]
   return merged.map((d) => ({
     ...d,
     isCompleted: Boolean(completedMap[d.id]),

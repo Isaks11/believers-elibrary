@@ -50,6 +50,12 @@ export function clearContentSourceCache(): void {
   cache.clear()
 }
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('cms:content-changed', () => {
+    clearContentSourceCache()
+  })
+}
+
 // --- Internal cached read ----------------------------------------------------
 
 /** Published rows for a CMS-backed type, cached for `CONTENT_SOURCE_TTL_MS`. */
@@ -60,7 +66,7 @@ async function loadPublishedRecords<K extends 'devotional' | 'hymn'>(
   const hit = cache.get(key)
   if (hit && hit.expiresAt > Date.now()) return hit.value as ContentRecordMap[K][]
   try {
-    const result = await listContent(type, { status: 'published', pageSize: 100 })
+    const result = await listContent(type, { status: 'published', pageSize: 1000 })
     const rows = result.rows
     cache.set(key, { value: rows, expiresAt: Date.now() + CONTENT_SOURCE_TTL_MS })
     return rows
@@ -137,6 +143,25 @@ export async function loadPublishedDevotionals(): Promise<DevotionalRecord[]> {
       return publishedTs(b) - publishedTs(a)
     })
     return selected
+  } catch {
+    return []
+  }
+}
+
+/**
+ * All published devotionals from the church CMS regardless of date.
+ * Sorted by devotional date / published timestamp newest first.
+ */
+export async function loadAllPublishedDevotionals(): Promise<DevotionalRecord[]> {
+  try {
+    const rows = await loadPublishedRecords('devotional')
+    const sorted = [...rows].sort((a, b) => {
+      const aDate = a.devotional_date ?? ''
+      const bDate = b.devotional_date ?? ''
+      if (aDate !== bDate) return bDate.localeCompare(aDate)
+      return publishedTs(b) - publishedTs(a)
+    })
+    return sorted
   } catch {
     return []
   }
