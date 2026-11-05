@@ -103,6 +103,14 @@ export function Devotional() {
   const bookmarkedCount = devotionals.filter(d => d.year === yearMatches && d.month === month && d.isBookmarked).length
   const streak = useMemo(() => computeStreak(), [devotionals, planProgress])
 
+  // Declared before the detail-view early returns below so the hook order stays
+  // stable on every render (otherwise opening a devotional throws "Rendered
+  // fewer hooks than expected").
+  const allPlans = useMemo(() => {
+    if (cmsPlans.length === 0) return READING_PLANS
+    return [...cmsPlans, ...READING_PLANS]
+  }, [cmsPlans])
+
   const selectedEntry = selectedDay ? monthEntries[selectedDay]?.entry : undefined
 
   const openTodayDevotional = () => {
@@ -230,11 +238,6 @@ export function Devotional() {
       />
     )
   }
-
-  const allPlans = useMemo(() => {
-    if (cmsPlans.length === 0) return READING_PLANS
-    return [...cmsPlans, ...READING_PLANS]
-  }, [cmsPlans])
 
   const activePlan = allPlans.find((p) => p.id === activePlanId) || allPlans[0]
   const activePlanCompletedMap = planProgress[activePlan.id]?.completedDays || {}
