@@ -12,3 +12,7 @@ build/
 # Logs and maps
 npm-debug.log*
 *.js.map
+
+# Temporary scripts
+.tmp-*.mjs
+

@@ -25,6 +25,7 @@ import {
   StickyNote,
   ShieldCheck,
   CornerDownRight,
+  RotateCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,7 @@ import {
   getStorageQuotaStats,
   StorageQuotaStats,
 } from '@/lib/offlineStorage';
+import { OFFLINE_CHAPTERS } from '@/data/offlineBibleChapters';
 
 export type TranslationKey = 'KJV' | 'WEB' | 'ASV' | 'BBE';
 
@@ -149,186 +151,38 @@ export const BIBLE_BOOKS: { name: string; chapters: number; testament: 'OT' | 'N
   { name: 'Revelation', chapters: 22, testament: 'NT' },
 ];
 
-/** Built-in offline Scripture chapters (Public Domain KJV & WEB, fallback for ASV & BBE) */
-const OFFLINE_CHAPTERS: Record<string, { KJV: string[]; WEB: string[] }> = {
-  'Genesis 1': {
-    KJV: [
-      'In the beginning God created the heaven and the earth.',
-      'And the earth was without form, and void; and darkness was upon the face of the deep. And the Spirit of God moved upon the face of the waters.',
-      'And God said, Let there be light: and there was light.',
-      'And God saw the light, that it was good: and God divided the light from the darkness.',
-      'And God called the light Day, and the darkness he called Night. And the evening and the morning were the first day.',
-      'And God said, Let there be a firmament in the midst of the waters, and let it divide the waters from the waters.',
-      'And God made the firmament, and divided the waters which were under the firmament from the waters which were above the firmament: and it was so.',
-      'And God called the firmament Heaven. And the evening and the morning were the second day.',
-      'And God said, Let the waters under the heaven be gathered together unto one place, and let the dry land appear: and it was so.',
-      'And God called the dry land Earth; and the gathering together of the waters called he Seas: and God saw that it was good.',
-    ],
-    WEB: [
-      'In the beginning, God created the heavens and the earth.',
-      'The earth was formless and empty. Darkness was on the surface of the deep and God’s Spirit was hovering over the surface of the waters.',
-      'God said, "Let there be light," and there was light.',
-      'God saw the light, and saw that it was good. God divided the light from the darkness.',
-      'God called the light "day", and the darkness he called "night". There was evening and there was morning, the first day.',
-      'God said, "Let there be an expanse in the middle of the waters, and let it divide the waters from the waters."',
-      'God made the expanse, and divided the waters which were under the expanse from the waters which were above the expanse; and it was so.',
-      'God called the expanse "sky". There was evening and there was morning, a second day.',
-      'God said, "Let the waters under the sky be gathered together to one place, and let the dry land appear;" and it was so.',
-      'God called the dry land "earth", and the gathering together of the waters he called "seas". God saw that it was good.',
-    ],
-  },
-  'Psalms 23': {
-    KJV: [
-      'The LORD is my shepherd; I shall not want.',
-      'He maketh me to lie down in green pastures: he leadeth me beside the still waters.',
-      'He restoreth my soul: he leadeth me in the paths of righteousness for his name’s sake.',
-      'Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me.',
-      'Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over.',
-      'Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the LORD for ever.',
-    ],
-    WEB: [
-      'Yahweh is my shepherd; I shall lack nothing.',
-      'He makes me lie down in green pastures. He leads me beside still waters.',
-      'He restores my soul. He guides me in the paths of righteousness for his name’s sake.',
-      'Even though I walk through the valley of the shadow of death, I will fear no evil, for you are with me. Your rod and your staff, they comfort me.',
-      'You prepare a table before me in the presence of my enemies. You anoint my head with oil. My cup runs over.',
-      'Surely goodness and loving kindness shall follow me all the days of my life, and I will dwell in Yahweh’s house forever.',
-    ],
-  },
-  'Proverbs 3': {
-    KJV: [
-      'My son, forget not my law; but let thine heart keep my commandments:',
-      'For length of days, and long life, and peace, shall they add to thee.',
-      'Let not mercy and truth forsake thee: bind them about thy neck; write them upon the table of thine heart:',
-      'So shalt thou find favour and good understanding in the sight of God and man.',
-      'Trust in the LORD with all thine heart; and lean not unto thine own understanding.',
-      'In all thy ways acknowledge him, and he shall direct thy paths.',
-      'Be not wise in thine own eyes: fear the LORD, and depart from evil.',
-      'It shall be health to thy navel, and marrow to thy bones.',
-    ],
-    WEB: [
-      'My son, don’t forget my teaching, but let your heart keep my commandments,',
-      'for they will add to you length of days, years of life, and peace.',
-      'Don’t let kindness and truth forsake you. Bind them around your neck. Write them on the tablet of your heart.',
-      'So you will find favor, and good understanding in the sight of God and man.',
-      'Trust in Yahweh with all your heart, and don’t lean on your own understanding.',
-      'In all your ways acknowledge him, and he will make your paths straight.',
-      'Don’t be wise in your own eyes. Fear Yahweh, and depart from evil.',
-      'It will be health to your body, and nourishment to your bones.',
-    ],
-  },
-  'Matthew 5': {
-    KJV: [
-      'And seeing the multitudes, he went up into a mountain: and when he was set, his disciples came unto him:',
-      'And he opened his mouth, and taught them, saying,',
-      'Blessed are the poor in spirit: for theirs is the kingdom of heaven.',
-      'Blessed are they that mourn: for they shall be comforted.',
-      'Blessed are the meek: for they shall inherit the earth.',
-      'Blessed are they which do hunger and thirst after righteousness: for they shall be filled.',
-      'Blessed are the merciful: for they shall obtain mercy.',
-      'Blessed are the pure in heart: for they shall see God.',
-      'Blessed are the peacemakers: for they shall be called the children of God.',
-    ],
-    WEB: [
-      'Seeing the multitudes, he went up onto the mountain. When he had sat down, his disciples came to him.',
-      'He opened his mouth and taught them, saying,',
-      '"Blessed are the poor in spirit, for theirs is the Kingdom of Heaven.',
-      'Blessed are those who mourn, for they shall be comforted.',
-      'Blessed are the gentle, for they shall inherit the earth.',
-      'Blessed are those who hunger and thirst for righteousness, for they shall be filled.',
-      'Blessed are the merciful, for they shall obtain mercy.',
-      'Blessed are the pure in heart, for they shall see God.',
-      'Blessed are the peacemakers, for they shall be called children of God."',
-    ],
-  },
-  'John 1': {
-    KJV: [
-      'In the beginning was the Word, and the Word was with God, and the Word was God.',
-      'The same was in the beginning with God.',
-      'All things were made by him; and without him was not any thing made that was made.',
-      'In him was life; and the life was the light of men.',
-      'And the light shineth in darkness; and the darkness comprehended it not.',
-      'There was a man sent from God, whose name was John.',
-      'The same came for a witness, to bear witness of the Light, that all men through him might believe.',
-      'He was not that Light, but was sent to bear witness of that Light.',
-      'That was the true Light, which lighteth every man that cometh into the world.',
-    ],
-    WEB: [
-      'In the beginning was the Word, and the Word was with God, and the Word was God.',
-      'The same was in the beginning with God.',
-      'All things were made through him. Without him, nothing was made that has been made.',
-      'In him was life, and the life was the light of men.',
-      'The light shines in the darkness, and the darkness hasn’t overcome it.',
-      'There came a man, sent from God, whose name was John.',
-      'The same came as a witness, that he might testify about the light, that all might believe through him.',
-      'He was not the light, but was sent that he might testify about the light.',
-      'The true light that enlightens everyone was coming into the world.',
-    ],
-  },
-  'John 3': {
-    KJV: [
-      'There was a man of the Pharisees, named Nicodemus, a ruler of the Jews:',
-      'The same came to Jesus by night, and said unto him, Rabbi, we know that thou art a teacher come from God: for no man can do these miracles that thou doest, except God be with him.',
-      'Jesus answered and said unto him, Verily, verily, I say unto thee, Except a man be born again, he cannot see the kingdom of God.',
-      'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
-      'For God sent not his Son into the world to condemn the world; but that the world through him might be saved.',
-    ],
-    WEB: [
-      'Now there was a man of the Pharisees named Nicodemus, a ruler of the Jews.',
-      'The same came to him by night, and said to him, "Rabbi, we know that you are a teacher come from God, for no one can do these signs that you do, unless God is with him."',
-      'Jesus answered him, "Most certainly, I tell you, unless one is born anew, he can’t see the Kingdom of God."',
-      'For God so loved the world, that he gave his one and only Son, that whoever believes in him should not perish, but have eternal life.',
-      'For God didn’t send his Son into the world to judge the world, but that the world should be saved through him.',
-    ],
-  },
-  'Romans 8': {
-    KJV: [
-      'There is therefore now no condemnation to them which are in Christ Jesus, who walk not after the flesh, but after the Spirit.',
-      'For the law of the Spirit of life in Christ Jesus hath made me free from the law of sin and death.',
-      'For what the law could not do, in that it was weak through the flesh, God sending his own Son in the likeness of sinful flesh, and for sin, condemned sin in the flesh:',
-      'That the righteousness of the law might be fulfilled in us, who walk not after the flesh, but after the Spirit.',
-      'And we know that all things work together for good to them that love God, to them who are the called according to his purpose.',
-      'What shall we then say to these things? If God be for us, who can be against us?',
-      'Who shall separate us from the love of Christ? shall tribulation, or distress, or persecution, or famine, or nakedness, or peril, or sword?',
-      'Nay, in all these things we are more than conquerors through him that loved us.',
-    ],
-    WEB: [
-      'There is therefore now no condemnation to those who are in Christ Jesus, who don’t walk according to the flesh, but according to the Spirit.',
-      'For the law of the Spirit of life in Christ Jesus made me free from the law of sin and of death.',
-      'For what the law couldn’t do, in that it was weak through the flesh, God did, sending his own Son in the likeness of sinful flesh and for sin, he condemned sin in the flesh,',
-      'that the ordinance of the law might be fulfilled in us, who don’t walk according to the flesh, but according to the Spirit.',
-      'We know that all things work together for good for those who love God, for those who are called according to his purpose.',
-      'What then shall we say about these things? If God is for us, who can be against us?',
-      'Who shall separate us from the love of Christ? Could oppression, or anguish, or persecution, or famine, or nakedness, or peril, or sword?',
-      'No, in all these things we are more than conquerors through him who loved us.',
-    ],
-  },
-  'Philippians 4': {
-    KJV: [
-      'Rejoice in the Lord alway: and again I say, Rejoice.',
-      'Let your moderation be known unto all men. The Lord is at hand.',
-      'Be careful for nothing; but in every thing by prayer and supplication with thanksgiving let your requests be made known unto God.',
-      'And the peace of God, which passeth all understanding, shall keep your hearts and minds through Christ Jesus.',
-      'Finally, brethren, whatsoever things are true, whatsoever things are honest, whatsoever things are just, whatsoever things are pure, whatsoever things are lovely, whatsoever things are of good report; if there be any virtue, and if there be any praise, think on these things.',
-      'I can do all things through Christ which strengtheneth me.',
-    ],
-    WEB: [
-      'Rejoice in the Lord always! Again I will say, "Rejoice!"',
-      'Let your gentleness be known to all men. The Lord is at hand.',
-      'In nothing be anxious, but in everything, by prayer and petition with thanksgiving, let your requests be made known to God.',
-      'And the peace of God, which surpasses all understanding, will guard your hearts and your thoughts in Christ Jesus.',
-      'Finally, brothers, whatever things are true, whatever things are honorable, whatever things are just, whatever things are pure, whatever things are lovely, whatever things are of good report: if there is any virtue and if there is any praise, think about these things.',
-      'I can do all things through Christ, who strengthens me.',
-    ],
-  },
-};
-
 const BOOKMARKS_KEY = 'bible_bookmarks';
 const HIGHLIGHTS_KEY = 'bible_highlights';
 const HIGHLIGHT_COLORS_KEY = 'bible_highlight_colors';
 const VERSE_NOTES_KEY = 'bible_verse_notes';
 const HISTORY_KEY = 'bible_history';
 const CACHE_KEY = 'bible_chapter_cache';
+
+/** Build a bible-api.com URL, handling single-chapter books (Jude, Philemon, …). */
+function bibleApiUrl(bookName: string, chapterNum: number, translation: TranslationKey): string {
+  const apiTrans = TRANSLATIONS.find((t) => t.key === translation)?.apiCode || 'kjv';
+  const params = new URLSearchParams({ translation: apiTrans });
+  // Without this, bible-api.com reads "Jude 1" as *verse* 1 instead of the whole book.
+  const meta = BIBLE_BOOKS.find((b) => b.name === bookName);
+  if (meta?.chapters === 1) params.set('single_chapter_book_matching', 'indifferent');
+  return `https://bible-api.com/${encodeURIComponent(`${bookName} ${chapterNum}`)}?${params.toString()}`;
+}
+
+/** Fetch a complete chapter (all verses) from bible-api.com. */
+async function fetchChapterText(
+  bookName: string,
+  chapterNum: number,
+  translation: TranslationKey
+): Promise<string[]> {
+  const res = await fetch(bibleApiUrl(bookName, chapterNum, translation));
+  if (!res.ok) throw new Error(`Bible service returned HTTP ${res.status}`);
+  const data = await res.json();
+  const texts = Array.isArray(data?.verses)
+    ? data.verses.map((v: { text?: string }) => String(v.text || '').replace(/\s+/g, ' ').trim())
+    : [];
+  if (texts.length === 0) throw new Error('Bible service returned an empty chapter');
+  return texts;
+}
 
 function loadList(key: string): string[] {
   try {
@@ -386,6 +240,8 @@ export function Bible() {
   const [verses, setVerses] = useState<string[]>([]);
   const [parallelVerses, setParallelVerses] = useState<string[]>([]);
   const [loadingChapter, setLoadingChapter] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [isOfflineCached, setIsOfflineCached] = useState(false);
   const [downloadingPack, setDownloadingPack] = useState(false);
 
@@ -441,75 +297,74 @@ export function Bible() {
     setEditingNoteVerseNum(null);
   }, [chapterRef, version]);
 
-  // Record history and load chapter text (IndexedDB -> localStorage -> built-in bundle -> bible-api.com)
+  // Record history and load chapter text (IndexedDB cache -> complete bundled chapters -> bible-api.com)
   useEffect(() => {
     let cancelled = false;
     const nextHistory = [chapterRef, ...loadList(HISTORY_KEY).filter((r) => r !== chapterRef)].slice(0, 35);
     saveList(HISTORY_KEY, nextHistory);
     setHistory(nextHistory);
+    setLoadError(null);
 
     const loadChapter = async () => {
-      // 1. Check IndexedDB / localStorage cache first
+      // 1. Check the complete chapter cache first (IndexedDB, localStorage fallback)
       const cachedVerses = await getOfflineBibleChapter(chapterRef, version);
       if (cancelled) return;
       if (cachedVerses && cachedVerses.length > 0) {
         const altTrans = version === 'KJV' ? 'WEB' : 'KJV';
-        const altVerses = (await getOfflineBibleChapter(chapterRef, altTrans)) || cachedVerses;
+        const altVerses = await getOfflineBibleChapter(chapterRef, altTrans);
         if (cancelled) return;
         setVerses(cachedVerses);
-        setParallelVerses(altVerses);
+        setParallelVerses(altVerses || []);
         setIsOfflineCached(true);
         setLoadingChapter(false);
         return;
       }
 
-      // 2. Check built-in offline chapters
+      // 2. Bundled complete chapters — KJV/WEB only. Never silently present KJV/WEB
+      //    text as ASV/BBE.
       const offline = OFFLINE_CHAPTERS[chapterRef];
-      if (offline) {
-        const primary = version === 'WEB' || version === 'BBE' ? offline.WEB : offline.KJV;
-        const secondary = version === 'WEB' || version === 'BBE' ? offline.KJV : offline.WEB;
-        setVerses(primary);
-        setParallelVerses(secondary);
+      if (offline && (version === 'KJV' || version === 'WEB')) {
+        setVerses(version === 'WEB' ? offline.WEB : offline.KJV);
+        setParallelVerses(version === 'WEB' ? offline.KJV : offline.WEB);
         setIsOfflineCached(true);
         setLoadingChapter(false);
         return;
       }
 
-      // 3. Fetch live from bible-api.com and persist into IndexedDB
+      // 3. Fetch the full chapter from bible-api.com and persist it for offline use
       setIsOfflineCached(false);
       setLoadingChapter(true);
-      const apiTrans = TRANSLATIONS.find((t) => t.key === version)?.apiCode || 'kjv';
 
       try {
-        const res = await fetch(
-          `https://bible-api.com/${encodeURIComponent(`${book} ${chapter}`)}?translation=${apiTrans}`
-        );
-        const data = await res.json();
+        const texts = await fetchChapterText(book, chapter, version);
         if (cancelled) return;
-        if (Array.isArray(data?.verses) && data.verses.length > 0) {
-          const texts = data.verses.map((v: { text?: string }) => String(v.text || '').trim());
-          setVerses(texts);
-          setParallelVerses(texts);
-          const saved = await saveOfflineBibleChapter(chapterRef, version, texts);
-          if (!cancelled) {
-            setIsOfflineCached(saved.ok);
-            refreshQuotaStats();
-          }
-        } else {
-          const fallback = OFFLINE_CHAPTERS['Genesis 1'];
-          setVerses(fallback.KJV);
-          setParallelVerses(fallback.WEB);
+        setVerses(texts);
+        // The companion translation is loaded lazily when parallel view is enabled.
+        setParallelVerses([]);
+        const saved = await saveOfflineBibleChapter(chapterRef, version, texts);
+        if (!cancelled) {
+          setIsOfflineCached(saved.ok);
+          refreshQuotaStats();
         }
       } catch {
         if (cancelled) return;
-        const fallback = OFFLINE_CHAPTERS[chapterRef] || OFFLINE_CHAPTERS['Genesis 1'];
-        setVerses(fallback.KJV);
-        setParallelVerses(fallback.WEB);
-        toast.error(
-          navigator.onLine
-            ? `Could not fetch ${chapterRef}; showing offline fallback.`
-            : `Offline: ${chapterRef} was not pre-downloaded; showing Genesis 1 fallback.`
-        );
+        if (offline) {
+          // A complete bundled chapter beats an empty reader, but disclose the translation.
+          setVerses(offline.KJV);
+          setParallelVerses(offline.WEB);
+          setIsOfflineCached(true);
+          toast.error(`Could not fetch ${chapterRef} (${version}); showing bundled KJV/WEB text.`);
+        } else {
+          setVerses([]);
+          setParallelVerses([]);
+          setIsOfflineCached(false);
+          setLoadError(
+            navigator.onLine
+              ? `Could not load ${chapterRef}. The Bible service may be unavailable — check your connection and try again.`
+              : `${chapterRef} is not downloaded for offline use. Connect to the internet or download it first.`
+          );
+          toast.error(`Could not load ${chapterRef}.`);
+        }
       } finally {
         if (!cancelled) setLoadingChapter(false);
       }
@@ -520,7 +375,46 @@ export function Bible() {
     return () => {
       cancelled = true;
     };
-  }, [book, chapter, version, chapterRef]);
+  }, [book, chapter, version, chapterRef, reloadKey]);
+
+  // Parallel view fetches the companion translation only while it is on screen.
+  useEffect(() => {
+    if (!isParallel || verses.length === 0) return;
+    let cancelled = false;
+    const altKey: TranslationKey = version === 'KJV' ? 'WEB' : 'KJV';
+
+    (async () => {
+      const cachedAlt = await getOfflineBibleChapter(chapterRef, altKey);
+      if (cancelled) return;
+      if (cachedAlt && cachedAlt.length > 0) {
+        setParallelVerses(cachedAlt);
+        return;
+      }
+
+      const offline = OFFLINE_CHAPTERS[chapterRef];
+      if (offline) {
+        setParallelVerses(altKey === 'KJV' ? offline.KJV : offline.WEB);
+        return;
+      }
+
+      try {
+        const texts = await fetchChapterText(book, chapter, altKey);
+        if (cancelled) return;
+        setParallelVerses(texts);
+        await saveOfflineBibleChapter(chapterRef, altKey, texts);
+        refreshQuotaStats();
+      } catch {
+        if (!cancelled) {
+          setParallelVerses([]);
+          toast.error(`Could not load the ${altKey} parallel text.`);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isParallel, chapterRef, version, book, chapter, verses.length]);
 
   // Stop speech synthesis on unmount
   useEffect(() => {
