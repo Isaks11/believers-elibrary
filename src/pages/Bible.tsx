@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -399,6 +399,7 @@ export function Bible() {
 
   // Modals & inline note editing
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [versePickerOpen, setVersePickerOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -406,6 +407,7 @@ export function Bible() {
   const [noteDraft, setNoteDraft] = useState('');
   const [editingNoteVerseNum, setEditingNoteVerseNum] = useState<number | null>(null);
   const [quotaStats, setQuotaStats] = useState<StorageQuotaStats | null>(null);
+  const verseRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const refreshQuotaStats = () => {
     getStorageQuotaStats().then(setQuotaStats);
@@ -432,6 +434,12 @@ export function Bible() {
 
   const chapterRef = `${book} ${chapter}`;
   const isChapterBookmarked = bookmarks.includes(chapterRef);
+
+  // Clear any verse selection when navigating to another chapter/translation.
+  useEffect(() => {
+    setSelectedVerseIdx(null);
+    setEditingNoteVerseNum(null);
+  }, [chapterRef, version]);
 
   // Record history and load chapter text (IndexedDB -> localStorage -> built-in bundle -> bible-api.com)
   useEffect(() => {
@@ -739,6 +747,14 @@ export function Bible() {
     }
   };
 
+  const selectVerse = (idx: number) => {
+    setSelectedVerseIdx(idx);
+    setVersePickerOpen(false);
+    window.requestAnimationFrame(() => {
+      verseRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   const visibleBooks = useMemo(() => {
     if (testamentFilter === 'ALL') return BIBLE_BOOKS;
     return BIBLE_BOOKS.filter((b) => b.testament === testamentFilter);
@@ -769,6 +785,18 @@ export function Bible() {
               className="bg-card text-foreground border-border/50 font-bold"
             >
               {chapterRef} <ChevronDown className="ml-1 w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVersePickerOpen(true)}
+              disabled={verses.length === 0}
+              aria-label="Select a verse"
+              title="Select a verse"
+              className="bg-card text-foreground border-border/50 font-bold"
+            >
+              {selectedVerseIdx !== null ? `v. ${selectedVerseIdx + 1}` : 'Verse'}
+              <ChevronDown className="ml-1 w-4 h-4" />
             </Button>
             {isOfflineCached && (
               <Badge variant="secondary" className="text-[9px] gap-1 hidden sm:inline-flex">
@@ -877,6 +905,12 @@ export function Bible() {
           </Button>
         </div>
 
+        {!loadingChapter && verses.length > 0 && (
+          <p className="text-[11px] text-center text-muted-foreground">
+            Tap a verse to highlight, add a note, or reflect — or use "Verse" above to jump to one.
+          </p>
+        )}
+
         {loadingChapter ? (
           <div className="py-12 text-center text-sm text-muted-foreground animate-pulse">
             Loading {chapterRef} ({version})...
@@ -893,7 +927,13 @@ export function Bible() {
               const isEditingNote = editingNoteVerseNum === verseNum;
 
               return (
-                <div key={idx} className="space-y-2">
+                <div
+                  key={idx}
+                  ref={(el) => {
+                    verseRefs.current[idx] = el;
+                  }}
+                  className="space-y-2 scroll-mt-32"
+                >
                   <div
                     onClick={() => setSelectedVerseIdx(isSelected ? null : idx)}
                     className={cn(
@@ -1170,6 +1210,44 @@ export function Bible() {
                 ))}
               </div>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Verse Picker Dialog */}
+      <Dialog open={versePickerOpen} onOpenChange={setVersePickerOpen}>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Select a Verse in {chapterRef}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            {verses.length === 0 ? (
+              <p className="text-xs text-muted-foreground">This chapter has not loaded yet. Try again in a moment.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-6 gap-1.5 max-h-[55vh] overflow-y-auto pr-1">
+                  {verses.map((text, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => selectVerse(idx)}
+                      title={text}
+                      aria-label={`Verse ${idx + 1}`}
+                      className={cn(
+                        'h-9 rounded-lg text-xs font-bold transition-all',
+                        selectedVerseIdx === idx
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary/40 text-primary hover:bg-secondary'
+                      )}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {verses.length} verses — choose one to jump to it and open its highlight, note, and journal actions.
+                </p>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
