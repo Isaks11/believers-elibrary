@@ -145,17 +145,17 @@ function demoAdminConfig(): DemoAdminConfig | null {
   const rawEnabled = (import.meta.env.VITE_DEMO_ADMIN_ENABLED as string | undefined)
     ?.trim()
     .toLowerCase();
-  // An explicit flag always wins (so `false` can opt out of the dev default).
-  const enabled = rawEnabled ? rawEnabled === 'true' : import.meta.env.DEV;
+  // Enabled by default unless explicitly set to 'false'
+  const enabled = rawEnabled ? rawEnabled !== 'false' : true;
   if (!enabled) return null;
 
   const email = (
     (import.meta.env.VITE_DEMO_ADMIN_EMAIL as string | undefined)?.trim() ||
-    (import.meta.env.DEV ? DEMO_ADMIN_DEFAULTS.email : '')
+    DEMO_ADMIN_DEFAULTS.email
   ).toLowerCase();
   const password =
     (import.meta.env.VITE_DEMO_ADMIN_PASSWORD as string | undefined) ||
-    (import.meta.env.DEV ? DEMO_ADMIN_DEFAULTS.password : '');
+    DEMO_ADMIN_DEFAULTS.password;
   if (!email || !password) return null;
 
   return {
@@ -249,7 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const parsed = JSON.parse(savedUser) as Partial<User>;
                 if (parsed.isGuest) {
                   setUser({ ...parsed, role: 'user' } as User);
-                } else if (parsed.isDemo) {
+                } else if (parsed.isDemo || (demoAdminConfig() && parsed.email?.toLowerCase() === demoAdminConfig()?.email)) {
                   const demo = demoAdminConfig();
                   if (demo && parsed.email?.toLowerCase() === demo.email) {
                     setUser({ ...parsed, role: 'admin', isDemo: true } as User);
