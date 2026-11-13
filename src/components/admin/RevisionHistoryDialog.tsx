@@ -72,7 +72,7 @@ export function RevisionHistoryDialog({
     }
     setBusy(true)
     try {
-      const res = restoreRevision(type, record.id, version, {
+      const res = await restoreRevision(type, record.id, version, {
         id: user?.id ?? null,
         role: user?.role ?? 'user',
       })

@@ -265,6 +265,7 @@ export function PrayerSection({ onChanged }: LegacySectionProps) {
         })
         .then((res) => recordWriteOutcome('admin', res), (err) => recordWriteError('admin', err))
     }
+    window.dispatchEvent(new Event('cms:content-changed'))
     setShowBroadcast(false)
     setBcTitle(''); setBcDesc('')
     toast.success('Prayer alert broadcast to all users!')
@@ -279,6 +280,7 @@ export function PrayerSection({ onChanged }: LegacySectionProps) {
     if (supabase) {
       supabase.from('prayer_alerts').update({ status }).eq('id', id).then((res) => recordWriteOutcome('admin', res), (err) => recordWriteError('admin', err))
     }
+    window.dispatchEvent(new Event('cms:content-changed'))
     toast.success(status === 'answered' ? 'Marked as answered prayer!' : 'Alert archived')
     onChanged?.()
   }
@@ -413,20 +415,26 @@ export function NewsSection({ onChanged }: LegacySectionProps) {
         })
         .then((res) => recordWriteOutcome('admin', res), (err) => recordWriteError('admin', err))
     }
+    window.dispatchEvent(new Event('cms:content-changed'))
     setShowPublishNews(false)
     setNewsTitle(''); setNewsExcerpt(''); setNewsContent(''); setNewsAuthor('')
     toast.success('News article published!')
     onChanged?.()
   }
 
-  const handleDeleteNews = (id: string) => {
+  const handleDeleteNews = async (id: string) => {
     if (!ensure('content:delete')) return
+    try {
+      const { markNewsDeleted } = await import('@/data/mockFaithData')
+      markNewsDeleted(id)
+    } catch { /* ignore */ }
     const updated = newsItems.filter(n => n.id !== id)
     saveNewsItems(updated)
     setNewsItems(updated)
     if (supabase) {
       supabase.from('news_items').delete().eq('id', id).then((res) => recordWriteOutcome('admin', res), (err) => recordWriteError('admin', err))
     }
+    window.dispatchEvent(new Event('cms:content-changed'))
     toast.success('Article deleted')
     onChanged?.()
   }

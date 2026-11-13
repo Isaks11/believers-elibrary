@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { AppIcon } from '@/components/common/AppIcon';
 import { computeStreak, activeDaysThisWeek, countCompletedDevotionals } from '@/lib/activity';
 import { getDevotionals } from '@/data/mockDevotionalHymnData';
-import { loadDailyVerse } from '@/lib/contentSource';
+import { cmsDevotionalToPageDevotional, loadAllPublishedDevotionals, loadDailyVerse } from '@/lib/contentSource';
 import { MONTHS, type DevotionalEntry } from '@/types/devotional-hymn';
 import { toast } from 'sonner';
 
@@ -62,33 +62,34 @@ export function Home() {
   const week = useMemo(() => activeDaysThisWeek(), []);
   const completedCount = useMemo(() => countCompletedDevotionals(), []);
 
-  const [todayDevotional, setTodayDevotional] = useState<DevotionalEntry | null>(() => {
-    const now = new Date();
-    try {
-      return (
-        getDevotionals().find(
-          (d) => d.year === now.getFullYear() && d.month === MONTHS[now.getMonth()] && d.day === now.getDate()
-        ) ?? null
-      );
-    } catch {
-      return null;
-    }
-  });
+  const [todayDevotional, setTodayDevotional] = useState<DevotionalEntry | null>(null);
 
   useEffect(() => {
-    const checkToday = () => {
+    let cancelled = false;
+    const resolveToday = (items: DevotionalEntry[]) => {
       const now = new Date();
-      const dev = getDevotionals().find(
-        (d) => d.year === now.getFullYear() && d.month === MONTHS[now.getMonth()] && d.day === now.getDate()
-      ) ?? null;
-      setTodayDevotional(dev);
+      return items.find((d) => d.year === now.getFullYear() && d.month === MONTHS[now.getMonth()] && d.day === now.getDate()) ?? null;
     };
-    checkToday();
-    window.addEventListener('cms:content-changed', checkToday);
-    window.addEventListener('storage', checkToday);
+    const refresh = async () => {
+      const local = getDevotionals();
+      try {
+        const published = await loadAllPublishedDevotionals();
+        if (cancelled) return;
+        const byId = new Map(local.map((d) => [d.id, d]));
+        published.map(cmsDevotionalToPageDevotional).forEach((d) => { if (!byId.has(d.id)) byId.set(d.id, d); });
+        setTodayDevotional(resolveToday(Array.from(byId.values())));
+      } catch {
+        if (!cancelled) setTodayDevotional(resolveToday(local));
+      }
+    };
+    void refresh();
+    const onChange = () => { void refresh(); };
+    window.addEventListener('cms:content-changed', onChange);
+    window.addEventListener('storage', onChange);
     return () => {
-      window.removeEventListener('cms:content-changed', checkToday);
-      window.removeEventListener('storage', checkToday);
+      cancelled = true;
+      window.removeEventListener('cms:content-changed', onChange);
+      window.removeEventListener('storage', onChange);
     };
   }, []);
 

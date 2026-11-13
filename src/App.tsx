@@ -5,14 +5,16 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { initDailyReminderScheduler } from '@/lib/notifications';
 import { can } from '@/lib/permissions';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { syncFaithDataFromServer } from '@/data/mockFaithData';
+import { loadAllPublishedDevotionals, loadPublishedHymns, loadPublishedReadingPlans, loadPublishedVideos, loadPublishedFaithResources } from '@/lib/contentSource';
 import { Home } from '@/pages/Home';
 import { Auth } from '@/pages/Auth';
+import { ForgotPassword } from '@/pages/ForgotPassword';
+import { ResetPassword } from '@/pages/ResetPassword';
 import { Devotional } from '@/pages/Devotional';
 import { HymnBook } from '@/pages/HymnBook';
 import { Bible } from '@/pages/Bible';
-import { Community } from '@/pages/Community';
 import { Profile } from '@/pages/Profile';
-import { FaithGuide } from '@/pages/FaithGuide';
 import { Admin } from '@/pages/Admin';
 import { Journal } from '@/pages/Journal';
 import { ELibrary } from '@/pages/ELibrary';
@@ -35,7 +37,7 @@ function AdminAccessDenied() {
           <div className="space-y-1">
             <h2 className="text-lg font-serif font-bold text-primary">Administrator Access Required</h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Your account does not have administrator permissions to view or modify platform content. Server writes are protected by PostgreSQL Row Level Security.
+              Your account does not have permission to manage this section. Please contact an administrator if you need access.
             </p>
           </div>
           <div className="flex flex-col gap-2 pt-2">
@@ -43,7 +45,7 @@ function AdminAccessDenied() {
               <ArrowLeft className="w-4 h-4" /> Return to Dashboard
             </Button>
             <Button size="sm" variant="outline" onClick={() => navigate('/profile')} className="w-full gap-1.5">
-              <Settings className="w-4 h-4" /> Account & Role Settings
+              <Settings className="w-4 h-4" /> Account Settings
             </Button>
           </div>
         </CardContent>
@@ -52,14 +54,59 @@ function AdminAccessDenied() {
   );
 }
 
+function ContentSync() {
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+
+    const preloadImages = () => {
+      const urls = [
+        'https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/devotional-cover-1-cb4ac9fc-1782601932817.webp',
+        'https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/bible-module-bg-2d68d807-1782601933195.webp',
+        '/brand-logo.png',
+      ];
+      urls.forEach((url) => {
+        try {
+          const img = new Image();
+          img.decoding = 'async';
+          img.src = url;
+        } catch { /* ignore */ }
+      });
+    };
+
+    const syncAndCache = async () => {
+      preloadImages();
+      if (!navigator.onLine) return;
+      try {
+        await Promise.allSettled([
+          loadAllPublishedDevotionals(),
+          loadPublishedHymns(),
+          loadPublishedReadingPlans(),
+          loadPublishedVideos(),
+          loadPublishedFaithResources(),
+          syncFaithDataFromServer(),
+        ]);
+      } catch {
+        // Local cached content remains available offline.
+      }
+    };
+
+    void syncAndCache();
+    window.addEventListener('online', syncAndCache);
+    return () => window.removeEventListener('online', syncAndCache);
+  }, [isLoading, user?.id]);
+
+  return null;
+}
+
 function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!user) return <Navigate to="/auth" replace />;
-  // Frontend guard for UX; Supabase RLS (`public.has_role(...)`) is the authoritative server enforcement.
   // Anyone who can contribute content (contributor/editor/admin/super_admin) may open the CMS shell;
-  // individual sections and actions are gated by `can()` inside the page.
+  // individual sections and actions are gated by permissions in the page.
   if (requireAdmin && !can(user.role, 'content:create')) return <AdminAccessDenied />;
 
   return <>{children}</>;
@@ -75,18 +122,19 @@ function App() {
 
   return (
     <AuthProvider>
+      <ContentSync />
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+          <Route path="/auth/reset-password" element={<ResetPassword />} />
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
             <Route path="/" element={<Home />} />
             <Route path="/bible" element={<Bible />} />
             <Route path="/devotional" element={<Devotional />} />
             <Route path="/hymns" element={<HymnBook />} />
-            <Route path="/community" element={<Community />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/faithguide" element={<FaithGuide />} />
             <Route path="/journal" element={<Journal />} />
             <Route path="/library" element={<ELibrary />} />
             <Route path="/prayer-news" element={<PrayerAlertsNews />} />

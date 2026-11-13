@@ -32,9 +32,11 @@ import {
   Sunrise,
   CalendarRange,
   HeartHandshake,
-  Cloud,
   HardDrive,
   ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  Database,
 } from 'lucide-react'
 import { getLibraryItems, getPrayerAlerts, getNewsItems, syncFaithDataFromServer } from '@/data/mockFaithData'
 import { getModerationReports } from '@/data/communityData'
@@ -42,6 +44,9 @@ import { getRegisteredUsers } from '@/data/userRegistry'
 import { listAuditLog } from '@/lib/auditLog'
 import { listContent } from '@/lib/contentAdmin'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { checkBackendHealth, type BackendHealth } from '@/lib/backendHealth'
+import { flushOutbox, getOutboxCount } from '@/lib/cmsOutbox'
+import { getPendingSyncCount } from '@/lib/syncHealth'
 import { can, ROLE_LABELS, type PermissionAction, type UserRole } from '@/lib/permissions'
 import type { ContentEntityType } from '@/types/content'
 import { useAuth } from '@/contexts/AuthContext'
@@ -100,6 +105,10 @@ export function Admin() {
   const [activeSection, setActiveSection] = useState<SectionKey | null>(null)
   const [counts, setCounts] = useState<Counts>({})
   const [remoteUserCount, setRemoteUserCount] = useState<number | null>(null)
+  const [health, setHealth] = useState<BackendHealth | null>(null)
+  const [checkingHealth, setCheckingHealth] = useState(false)
+  const [outboxCount, setOutboxCount] = useState(() => getOutboxCount())
+  const [pendingSync, setPendingSync] = useState(() => getPendingSyncCount())
 
   /** Derives every home-view number from real data (stores + listContent). */
   const refreshCounts = useCallback(async () => {
@@ -127,10 +136,30 @@ export function Admin() {
     void refreshCounts()
   }, [refreshCounts])
 
-  // Same bootstrap behaviour as the previous Admin: refresh local stores from
-  // the server when possible and count remote profiles when available.
+  const refreshHealth = useCallback(async () => {
+    setCheckingHealth(true)
+    try {
+      const result = await checkBackendHealth()
+      setHealth(result)
+    } finally {
+      setCheckingHealth(false)
+    }
+  }, [])
+
+  const refreshSyncStatus = useCallback(() => {
+    setOutboxCount(getOutboxCount())
+    setPendingSync(getPendingSyncCount())
+  }, [])
+
+  // Background bootstrap: refresh stores, flush queued CMS writes, and monitor backend health.
   useEffect(() => {
-    syncFaithDataFromServer().then(() => refreshCounts())
+    void (async () => {
+      await flushOutbox()
+      refreshSyncStatus()
+      await syncFaithDataFromServer()
+      await refreshCounts()
+    })()
+    void refreshHealth()
     if (supabase) {
       supabase
         .from('profiles')
@@ -142,10 +171,37 @@ export function Admin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Returning home re-derives the numbers.
+  // Keep sync/health checks running quietly in the background.
   useEffect(() => {
-    if (activeSection === null) void refreshCounts()
-  }, [activeSection, refreshCounts])
+    const tick = () => {
+      void (async () => {
+        await flushOutbox()
+        refreshSyncStatus()
+        await refreshHealth()
+      })()
+    }
+    const id = window.setInterval(tick, 60000)
+    return () => window.clearInterval(id)
+  }, [refreshHealth, refreshSyncStatus])
+
+  // Returning home re-derives the numbers and sync status.
+  useEffect(() => {
+    if (activeSection === null) {
+      void refreshCounts()
+      refreshSyncStatus()
+      void refreshHealth()
+    }
+  }, [activeSection, refreshCounts, refreshSyncStatus, refreshHealth])
+
+  useEffect(() => {
+    const onChange = () => refreshSyncStatus()
+    window.addEventListener('online', onChange)
+    window.addEventListener('cms:content-changed', onChange as EventListener)
+    return () => {
+      window.removeEventListener('online', onChange)
+      window.removeEventListener('cms:content-changed', onChange as EventListener)
+    }
+  }, [refreshSyncStatus])
 
   const visibleSections = SECTIONS.filter((s) => !s.action || can(role, s.action))
 
@@ -267,29 +323,78 @@ export function Admin() {
         </div>
       </header>
 
-      {/* Storage honesty banner */}
-      {isSupabaseConfigured ? (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] leading-relaxed flex gap-2">
-          <Cloud className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>
-            <strong>Cloud CMS.</strong> Supabase is configured — edits are saved to this device
-            first, then synced best-effort to Postgres. Apply
-            supabase/migrations/20261020_cms_content_and_roles.sql if you have not yet, so the
-            5-role model (super_admin · admin · editor · contributor · user) and CMS tables/RLS are
-            live on the server.
-          </span>
-        </div>
-      ) : (
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-relaxed flex gap-2">
-          <HardDrive className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>
-            <strong>Device-local CMS.</strong> Content, revisions and the audit trail live in this
-            browser only. Set VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY and apply
-            supabase/migrations/20261020_cms_content_and_roles.sql to enable cloud sync, server
-            roles and RLS.
-          </span>
-        </div>
-      )}
+      {/* Background sync/health status — only surface issues (hidden when connected & healthy). */}
+      {(() => {
+        const state = health?.state ?? (isSupabaseConfigured ? null : 'local')
+        const hasIssues = outboxCount > 0 || pendingSync > 0
+        if (state === 'connected' && !hasIssues) return null
+        if (!state && !hasIssues) return null
+
+        const tone =
+          state === 'connected'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            : state === 'schema_missing'
+              ? 'bg-orange-50 border-orange-200 text-orange-900'
+              : state === 'unreachable'
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : 'bg-amber-50 border-amber-200 text-amber-900'
+        const Icon =
+          state === 'connected'
+            ? CheckCircle2
+            : state === 'schema_missing'
+              ? Database
+              : state === 'unreachable'
+                ? AlertTriangle
+                : HardDrive
+        const title =
+          state === 'schema_missing'
+            ? 'Content service needs setup'
+            : state === 'unreachable'
+              ? 'Content service unavailable'
+              : state === 'local'
+                ? 'Saved on this device'
+                : 'Updating content'
+
+        return (
+          <div className={`p-3 rounded-xl border text-[11px] leading-relaxed space-y-2 ${tone}`}>
+            <div className="flex gap-2">
+              <Icon className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold">{title}</p>
+                {state === 'unreachable' && (
+                  <p className="mt-0.5">
+                    Updates are running in the background. Check your internet connection and try again shortly.
+                  </p>
+                )}
+                {state === 'schema_missing' && (
+                  <p className="mt-0.5">
+                    Some content features need to be completed before updates can be saved online.
+                  </p>
+                )}
+                {state === 'local' && (
+                  <p className="mt-0.5">
+                    Your changes are saved on this device. Sign in with your account to keep content available everywhere.
+                  </p>
+                )}
+                {(outboxCount > 0 || pendingSync > 0) && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {outboxCount > 0 && (
+                      <Badge variant="secondary" className="text-[10px] bg-white/60">
+                        {outboxCount} change{outboxCount === 1 ? '' : 's'} waiting to update
+                      </Badge>
+                    )}
+                    {pendingSync > 0 && (
+                      <Badge variant="secondary" className="text-[10px] bg-white/60">
+                        {pendingSync} update{pendingSync === 1 ? '' : 's'} pending
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Overview stats (all derived from real data) */}
       <div className="grid grid-cols-2 gap-3">

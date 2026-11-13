@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/permissions';
@@ -29,6 +29,7 @@ import {
   RefreshCw,
   FileText,
   Trash2,
+  Camera,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,38 @@ export function Profile() {
   const { user, isRemote, updateProfile, logout } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const profilePhotoKey = user ? `profile_photo_local_${user.id || user.email || 'guest'}` : 'profile_photo_local_guest';
+  const [localAvatar, setLocalAvatar] = useState<string | null>(() => {
+    try { return localStorage.getItem(profilePhotoKey); } catch { return null; }
+  });
+
+  useEffect(() => {
+    try { setLocalAvatar(localStorage.getItem(profilePhotoKey)); } catch { setLocalAvatar(null); }
+  }, [profilePhotoKey]);
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const dataUrl = String(reader.result || '');
+        localStorage.setItem(profilePhotoKey, dataUrl);
+        setLocalAvatar(dataUrl);
+        toast.success('Profile picture saved on this device');
+      } catch {
+        toast.error('Could not save picture on this device');
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDialog, setActiveDialog] = useState<'settings' | 'history' | 'bookmarks' | 'backup' | 'legal' | null>(null);
@@ -100,11 +133,11 @@ export function Profile() {
 
   const handleManualCloudSync = async () => {
     if (!navigator.onLine) {
-      toast.error('You are currently offline. Edits are saved locally and will sync when connectivity returns.');
+      toast.error('You are offline. Your changes are saved on this device and will update automatically when you are back online.');
       return;
     }
     if (!isRemote) {
-      toast.info('Running in Device-Local mode. Configure VITE_SUPABASE_URL to enable cloud sync.');
+      toast.info('Your content is saved on this device. Sign in to keep your data available across your devices.');
       return;
     }
     setSyncState('syncing');
@@ -121,27 +154,23 @@ export function Profile() {
       ].filter((e): e is string => Boolean(e));
       if (errors.length > 0) {
         setSyncState('error');
-        toast.error(`Cloud sync incomplete — local data kept. ${errors.join(' | ')}`);
+        toast.error('Some updates could not be completed. Your data is safely kept on this device.');
         return;
       }
       if (prefRes.conflicts && prefRes.conflicts.length > 0) {
-        toast.info(
-          `${prefRes.conflicts.length} sync conflict${prefRes.conflicts.length === 1 ? '' : 's'} resolved — the newest copy was kept (${prefRes.conflicts.join(', ')}).`
-        );
+        toast.info('Some recent changes were updated. The latest version was kept.');
       }
       setSyncState('synced');
       setRefreshKey((k) => k + 1);
       const health = getSyncHealthSummary();
       if (health.pending > 0) {
-        toast.warning(
-          `Synced, but ${health.pending} earlier write${health.pending === 1 ? '' : 's'} still failed (${health.scopes.join(', ')}).`
-        );
+        toast.warning('Most updates are complete. A few changes will finish when the connection improves.');
       } else {
-        toast.success('Cloud synchronization complete');
+        toast.success('Your content is up to date.');
       }
     } catch {
       setSyncState('error');
-      toast.error('Cloud synchronization failed. Please retry.');
+      toast.error('Could not update right now. Please try again in a moment.');
     }
   };
 
@@ -260,33 +289,32 @@ export function Profile() {
       <div className="flex flex-col items-center gap-3 py-2">
         <div className="relative">
           <Avatar className="w-24 h-24 ring-4 ring-primary/10 shadow-xl">
-            <AvatarImage src={user?.avatar} />
+            <AvatarImage src={localAvatar || user?.avatar} />
             <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-serif">
               {user?.name?.[0]?.toUpperCase() || 'B'}
             </AvatarFallback>
           </Avatar>
-          {!user?.isGuest && (
-            <div className="absolute -bottom-1 -right-1 bg-accent text-accent-foreground p-1.5 rounded-full shadow-lg">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => avatarInputRef.current?.click()}
+            className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground p-2 rounded-full shadow-lg border-2 border-background"
+            aria-label="Upload profile picture"
+            title="Upload profile picture (saved on this device)"
+          >
+            <Camera className="w-4 h-4" />
+          </button>
+          <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
         </div>
         <div className="text-center space-y-1">
           <h2 className="text-xl font-bold text-primary">{user?.name}</h2>
           {user?.email && <p className="text-xs text-muted-foreground">{user.email}</p>}
           <div className="flex items-center justify-center gap-1.5 pt-1 flex-wrap">
             <Badge variant="secondary" className="text-[10px] uppercase">
-              {user?.isGuest ? 'Guest Session' : user?.role ? ROLE_LABELS[user.role] : 'Registered Believer'}
+              {user?.isGuest ? 'Guest Session' : user?.role ? ROLE_LABELS[user.role] : 'Registered Member'}
             </Badge>
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-[10px] gap-1',
-                isRemote ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : 'border-amber-300 text-amber-800 bg-amber-50'
-              )}
-            >
-              {isRemote ? <Cloud className="w-3 h-3" /> : <HardDrive className="w-3 h-3" />}
-              {isRemote ? 'Cloud Synced' : 'Device-Local'}
+            <Badge variant="outline" className="text-[10px] gap-1 border-slate-200 text-slate-700 bg-slate-50">
+              {isRemote ? <ShieldCheck className="w-3 h-3" /> : <HardDrive className="w-3 h-3" />}
+              {isRemote ? 'Account Active' : 'Saved on this device'}
             </Badge>
           </div>
         </div>
@@ -345,29 +373,29 @@ export function Profile() {
           },
           {
             icon: Download,
-            label: 'Backup & Restore Data',
-            count: 'Export or import JSON backup',
+            label: 'Backup & Restore',
+            count: 'Export or import your personal data',
             onClick: () => setActiveDialog('backup'),
           },
           {
             icon: RefreshCw,
-            label: 'Synchronize Cloud Data',
+            label: 'Update My Content',
             count:
               syncState === 'syncing'
-                ? 'Synchronizing...'
+                ? 'Updating your content...'
                 : syncState === 'synced'
-                ? 'All changes synced'
+                ? 'Your content is up to date'
                 : syncState === 'error'
-                ? 'Sync failed — tap to retry'
+                ? 'Could not update — tap to try again'
                 : isRemote
-                ? 'Tap to sync journal, progress & preferences'
-                : 'Device-Local mode (configure Supabase for cloud)',
+                ? 'Keep your saved content up to date'
+                : 'Content saved on this device',
             onClick: handleManualCloudSync,
           },
           {
             icon: Database,
-            label: 'Account & Storage Settings',
-            count: isRemote ? 'Supabase PostgreSQL + Local Cache' : 'Local Browser Storage',
+            label: 'Account Settings',
+            count: isRemote ? 'Manage your account and preferences' : 'Manage your device settings and profile',
             onClick: openSettings,
           },
           {
@@ -412,7 +440,7 @@ export function Profile() {
       <Dialog open={activeDialog === 'settings'} onOpenChange={(o) => !o && setActiveDialog(null)}>
         <DialogContent className="max-w-sm rounded-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Account & Storage Settings</DialogTitle>
+            <DialogTitle>Account Settings</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div>
@@ -424,14 +452,17 @@ export function Profile() {
                 className="mt-1"
               />
             </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Your profile picture is saved only on this device. Tap the camera icon on your profile to update it.
+            </p>
 
             {!isRemote && (
               <div className="space-y-2 p-3 rounded-xl bg-secondary/40 border border-border/50">
                 <label className="text-xs font-semibold text-primary uppercase block">
-                  Local Mode Role
+                  Local Access Mode
                 </label>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  In Device-Local mode, you can switch between the CMS roles to test role-protected actions in the admin panel. When connected to Supabase, roles are server-enforced via PostgreSQL Row Level Security and cannot be changed from this device.
+                  For testing on this device, you can switch roles used in the admin area. Signed-in account roles are managed securely by your account.
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   {(['user', 'contributor', 'editor', 'admin'] as UserRole[]).map((r) => (
@@ -459,7 +490,7 @@ export function Profile() {
                 <Trash2 className="w-3.5 h-3.5" /> Delete Account & Personal Data
               </p>
               <p className="text-[11px] text-rose-700/90 leading-relaxed">
-                Permanently erase your private journal entries, prayer requests, bookmarks, reading history, and profile from {isRemote ? 'both Supabase and this device' : 'this device'}.
+                Permanently erase your private journal entries, prayer requests, bookmarks, reading history, and profile from {isRemote ? 'your account and this device' : 'this device'}.
               </p>
               {!confirmDeleteAccount ? (
                 <Button
@@ -756,10 +787,7 @@ export function Profile() {
             <div>
               <p className="font-bold text-foreground text-sm mb-1">Privacy Notice</p>
               <p>
-                Journal entries, personal prayers, mood logs, and PINs stay on this device unless you sign in —
-                signed-in data is stored in your Supabase project under Row Level Security and only you (or an
-                admin acting on a reported-content review) can access it. We collect no analytics or advertising
-                identifiers.
+                Journal entries, personal prayers, mood logs, and PINs stay on this device. When you sign in, your personal content can be kept available with your account so you can access it securely. We collect no analytics or advertising identifiers. Profile pictures you upload are stored only on this device.
               </p>
             </div>
             <div>

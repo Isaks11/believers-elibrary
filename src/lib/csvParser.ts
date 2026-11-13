@@ -13,8 +13,12 @@ export interface ParsedDevotionalRow {
   verse_ref: string;
   verse_text: string | null;
   body: string;
+  translation: string | null;
   category: string | null;
+  tags: string[];
   author: string | null;
+  license_attribution: string | null;
+  offline_policy: 'online_only' | 'optional' | 'essential';
   status: ContentStatus;
 }
 
@@ -93,8 +97,27 @@ function normalizeHeader(h: string): string {
   if (clean === 'verseref' || clean === 'scriptureref' || clean === 'reference' || clean === 'scripture') return 'verse_ref';
   if (clean === 'versetext' || clean === 'scripturetext' || clean === 'verse') return 'verse_text';
   if (clean === 'theme' || clean === 'topic' || clean === 'category') return 'category';
-  if (clean === 'content' || clean === 'reading' || clean === 'mainbody') return 'body';
+  if (clean === 'content' || clean === 'reading' || clean === 'mainbody' || clean === 'devotionalbody') return 'body';
+  if (clean === 'bibleversion' || clean === 'version' || clean === 'translation') return 'translation';
+  if (clean === 'tag' || clean === 'tags' || clean === 'keywords') return 'tags';
+  if (clean === 'license' || clean === 'licence' || clean === 'attribution' || clean === 'licenseattribution') return 'license_attribution';
+  if (clean === 'offline' || clean === 'offlinepolicy') return 'offline_policy';
   return clean;
+}
+
+function parseTags(raw: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[;|]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function normalizeOfflinePolicy(raw: string): 'online_only' | 'optional' | 'essential' {
+  const v = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (v === 'essential' || v === 'required') return 'essential';
+  if (v === 'optional' || v === 'cache' || v === 'cached') return 'optional';
+  return 'online_only';
 }
 
 /**
@@ -114,18 +137,22 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
   const verseRefIdx = headers.indexOf('verse_ref');
   const verseTextIdx = headers.indexOf('verse_text');
   const bodyIdx = headers.indexOf('body');
+  const translationIdx = headers.indexOf('translation');
   const categoryIdx = headers.indexOf('category');
+  const tagsIdx = headers.indexOf('tags');
   const authorIdx = headers.indexOf('author');
+  const licenseIdx = headers.indexOf('license_attribution');
+  const offlineIdx = headers.indexOf('offline_policy');
   const statusIdx = headers.indexOf('status');
 
-  if (titleIdx === -1 || bodyIdx === -1 || (dateIdx === -1 && !headers.includes('date'))) {
+  if (titleIdx === -1 || bodyIdx === -1 || dateIdx === -1 || verseRefIdx === -1) {
     return {
       valid: [],
       errors: [
         {
           rowNumber: 1,
           message:
-            'Missing required header columns. The CSV must contain at least: date, title, verse_ref, and body.',
+            'Missing required columns. CSV must include: date (or devotional_date), title, verse_ref, and body. Optional: verse_text, translation, category, tags, author, license_attribution, offline_policy, status.',
         },
       ],
       totalRows: 0,
@@ -143,8 +170,12 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
     const verseRef = (verseRefIdx !== -1 ? row[verseRefIdx] : '') || '';
     const verseText = (verseTextIdx !== -1 ? row[verseTextIdx] : '') || null;
     const body = (row[bodyIdx] || '').trim();
+    const translation = (translationIdx !== -1 ? row[translationIdx] : '') || null;
     const category = (categoryIdx !== -1 ? row[categoryIdx] : '') || null;
+    const tagsRaw = (tagsIdx !== -1 ? row[tagsIdx] : '') || '';
     const author = (authorIdx !== -1 ? row[authorIdx] : '') || null;
+    const licenseAttribution = (licenseIdx !== -1 ? row[licenseIdx] : '') || null;
+    const offlineRaw = (offlineIdx !== -1 ? row[offlineIdx] : '') || 'optional';
     const rawStatus = (statusIdx !== -1 ? row[statusIdx] : 'published') || 'published';
 
     const rowErrors: string[] = [];
@@ -183,7 +214,7 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
     }
 
     const status: ContentStatus =
-      rawStatus.toLowerCase() === 'draft' ? 'draft' : 'published';
+      rawStatus.trim().toLowerCase() === 'draft' ? 'draft' : 'published';
 
     if (rowErrors.length > 0) {
       errors.push({
@@ -197,8 +228,12 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
         verse_ref: verseRef.trim(),
         verse_text: verseText ? verseText.trim() : null,
         body,
+        translation: translation ? translation.trim() : null,
         category: category ? category.trim() : null,
+        tags: parseTags(tagsRaw),
         author: author ? author.trim() : null,
+        license_attribution: licenseAttribution ? licenseAttribution.trim() : null,
+        offline_policy: normalizeOfflinePolicy(offlineRaw),
         status,
       });
     }
@@ -227,15 +262,32 @@ export function generateDevotionalsTemplateCsv(): string {
   };
 
   const rows = [
-    ['date', 'title', 'verse_ref', 'verse_text', 'body', 'theme', 'author', 'status'],
+    [
+      'date',
+      'title',
+      'verse_ref',
+      'verse_text',
+      'body',
+      'translation',
+      'category',
+      'tags',
+      'author',
+      'license_attribution',
+      'offline_policy',
+      'status',
+    ],
     [
       formatDate(today),
       'Walking in Divine Purpose',
       'Jeremiah 29:11',
       'For I know the thoughts that I think toward you, saith the LORD, thoughts of peace, and not of evil, to give you an expected end.',
-      'In our walk with God, there are moments where the path ahead seems obscured by clouds of uncertainty. We often find ourselves questioning if we are truly following His lead.\n\nBut the scriptures remind us of a fundamental truth: God\'s plans for us are intentional. He is the Great Architect of our lives. When you feel stalled, remember that preparation often looks like waiting.\n\nChoose today to trust His divine timing and stay committed to prayer and devotion.',
+      'In our walk with God, there are moments where the path ahead seems obscured by clouds of uncertainty.\n\nBut Scripture reminds us: God’s plans are intentional. He is the Great Architect of our lives. When you feel stalled, preparation often looks like waiting.\n\nChoose today to trust His divine timing and stay committed to prayer and devotion.',
+      'KJV',
       'Purpose & Calling',
+      'purpose; trust; guidance',
       'Rev. Daniel Mensah',
+      '© Believers e-Library / Ministry content',
+      'optional',
       'published',
     ],
     [
@@ -243,9 +295,13 @@ export function generateDevotionalsTemplateCsv(): string {
       'The Shepherd Who Leads',
       'Psalm 23:1-3',
       'The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul.',
-      'The image of the Shepherd is one of the most tender pictures of God in Scripture. A shepherd does not drive the sheep from behind with harsh commands; he leads from the front.\n\nOur Good Shepherd knows each of us by name. Green pastures and still waters speak of provision and peace found by staying near the Shepherd.',
+      'The image of the Shepherd is one of the most tender pictures of God in Scripture. A shepherd leads from the front and knows each sheep by name.\n\nGreen pastures and still waters speak of provision and peace found by staying near the Shepherd. Rest in His care today.',
+      'KJV',
       'Guidance & Care',
+      'shepherd; peace; provision',
       'Pastor Grace Osei',
+      'Public domain scripture quotation noted where applicable',
+      'optional',
       'published',
     ],
     [
@@ -253,10 +309,14 @@ export function generateDevotionalsTemplateCsv(): string {
       'Faith Over Fear',
       'Isaiah 41:10',
       'Fear thou not; for I am with thee: be not dismayed; for I am thy God: I will strengthen thee; yea, I will help thee.',
-      'Fear is one of the enemy\'s most persistent weapons, but faith is our shield. When challenges rise against you, remember that you do not stand in your own strength.\n\nGod has promised to uphold you with His righteous right hand. Rest securely in His promise today.',
+      'Fear is a persistent weapon, but faith is our shield. When challenges rise, remember that you do not stand in your own strength.\n\nGod has promised to uphold you with His righteous right hand. Rest securely in His promise today.',
+      'KJV',
       'Faith & Victory',
+      'faith; courage; strength',
       'Church Ministry',
-      'published',
+      '',
+      'online_only',
+      'draft',
     ],
   ];
 

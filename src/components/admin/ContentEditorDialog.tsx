@@ -26,6 +26,7 @@ import {
   updateContent,
   setStatus,
   validateContent,
+  storageFeedback,
 } from '@/lib/contentAdmin'
 import {
   ContentTypeMeta,
@@ -66,6 +67,8 @@ type FormState = {
   structure: PlanStep[]
   number: string
   lyrics: string
+  hymn_chorus: string
+  hymn_verses: string[]
   audio_url: string
   public_domain: boolean
   meter: string
@@ -98,6 +101,47 @@ function asNumberString(value: unknown): string {
   return typeof value === 'number' && Number.isFinite(value) ? String(value) : ''
 }
 
+function composeHymnLyrics(verses: string[], chorus: string): string {
+  const cleanVerses = verses.map((v) => v.trim()).filter(Boolean)
+  const cleanChorus = chorus.trim()
+  if (cleanVerses.length === 0 && !cleanChorus) return ''
+  const blocks: string[] = []
+  cleanVerses.forEach((v, i) => {
+    blocks.push(`Verse ${i + 1}:\n${v}`)
+    if (cleanChorus) blocks.push(`Chorus:\n${cleanChorus}`)
+  })
+  if (cleanVerses.length === 0 && cleanChorus) blocks.push(`Chorus:\n${cleanChorus}`)
+  // remove trailing duplicate chorus if last verse already added it
+  if (cleanChorus && blocks.length >= 2 && blocks[blocks.length - 1] === blocks[blocks.length - 2]) {
+    blocks.pop()
+  }
+  return blocks.join('\n\n')
+}
+
+function parseHymnLyrics(lyrics: string): { verses: string[]; chorus: string } {
+  const text = (lyrics || '').trim()
+  if (!text) return { verses: [''], chorus: '' }
+  const blocks = text.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean)
+  let chorus = ''
+  const verses: string[] = []
+  for (const block of blocks) {
+    const lines = block.split('\n')
+    const head = (lines[0] || '').trim().toLowerCase()
+    const body = lines.slice(1).join('\n').trim() || block
+    if (/^(chorus|refrain)\b/.test(head)) {
+      if (!chorus) chorus = body.replace(/^(chorus|refrain)\s*[:.-]?\s*/i, '').trim() || body
+      continue
+    }
+    if (/^(verse|stanza)\s*\d*/i.test(head)) {
+      verses.push(lines.slice(1).join('\n').trim() || body)
+      continue
+    }
+    verses.push(block)
+  }
+  if (verses.length === 0) verses.push(text)
+  return { verses, chorus }
+}
+
 function emptyForm(): FormState {
   return {
     title: '',
@@ -111,6 +155,8 @@ function emptyForm(): FormState {
     structure: [],
     number: '',
     lyrics: '',
+    hymn_chorus: '',
+    hymn_verses: [''],
     audio_url: '',
     public_domain: true,
     meter: '',
@@ -134,6 +180,8 @@ function emptyForm(): FormState {
 function formFromRecord(record: AnyContentRecord | null): FormState {
   if (!record) return emptyForm()
   const row = record as unknown as Record<string, unknown>
+  const lyrics = asString(row.lyrics)
+  const hymn = parseHymnLyrics(lyrics)
   return {
     title: asString(row.title),
     body: asString(row.body),
@@ -145,7 +193,9 @@ function formFromRecord(record: AnyContentRecord | null): FormState {
     days: asNumberString(row.days) || '7',
     structure: Array.isArray(row.structure) ? (row.structure as PlanStep[]) : [],
     number: asNumberString(row.number),
-    lyrics: asString(row.lyrics),
+    lyrics,
+    hymn_chorus: hymn.chorus,
+    hymn_verses: hymn.verses.length ? hymn.verses : [''],
     audio_url: asString(row.audio_url),
     public_domain: row.public_domain !== false,
     meter: asString(row.meter),
@@ -199,11 +249,12 @@ function buildDraft(type: ContentEntityType, form: FormState): Record<string, un
         days: Number(form.days),
         structure: form.structure,
       }
-    case 'hymn':
+    case 'hymn': {
+      const composed = composeHymnLyrics(form.hymn_verses, form.hymn_chorus)
       return {
         ...base,
         title: form.title.trim(),
-        lyrics: form.lyrics,
+        lyrics: (composed || form.lyrics || '').trim(),
         number: form.number.trim() ? Number(form.number) : null,
         audio_url: form.audio_url.trim() || null,
         public_domain: form.public_domain,
@@ -211,6 +262,7 @@ function buildDraft(type: ContentEntityType, form: FormState): Record<string, un
         composer: form.composer.trim() || null,
         hymn_category: trimmedCategory || null,
       }
+    }
     case 'video':
       return {
         ...base,
@@ -293,7 +345,7 @@ export function ContentEditorDialog({
 
   const actor = { id: user?.id ?? null, role: role ?? 'user' }
 
-  const saveContent = useCallback((): AnyContentRecord | null => {
+  const saveContent = useCallback(async (): Promise<AnyContentRecord | null> => {
     const draft = buildDraft(type, form) as ContentDraft<ContentRecordMap[ContentEntityType]>
     // Early, field-level feedback (create/update run the same validation).
     const preErrors = validateContent(type, draft)
@@ -302,7 +354,7 @@ export function ContentEditorDialog({
       return null
     }
     if (record) {
-      const res = updateContent(type, record.id, draft, actor)
+      const res = await updateContent(type, record.id, draft, actor)
       if (!res.ok) {
         setErrors(res.errors)
         return null
@@ -310,10 +362,11 @@ export function ContentEditorDialog({
       setErrors([])
       setSavedVersion(res.record?.version ?? savedVersion)
       if (res.record) onChanged?.(res.record)
-      toast.success(`Saved — now v${res.record?.version}`)
+      const feedback = storageFeedback(res, `Saved — now v${res.record?.version}`)
+      toast[feedback.level](feedback.message)
       return res.record ?? null
     }
-    const res = createContent(type, draft, actor)
+    const res = await createContent(type, draft, actor)
     if (!res.ok) {
       setErrors(res.errors)
       return null
@@ -322,7 +375,8 @@ export function ContentEditorDialog({
     setSavedVersion(res.record?.version ?? 1)
     setCurrentStatus('draft')
     if (res.record) onChanged?.(res.record)
-    toast.success('Draft created')
+    const feedback = storageFeedback(res, 'Draft created')
+    toast[feedback.level](feedback.message)
     return res.record ?? null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, form, record, savedVersion, onChanged, actor.role, actor.id])
@@ -331,14 +385,14 @@ export function ContentEditorDialog({
   const resolveId = (fresh: AnyContentRecord | null): string | null =>
     record?.id ?? fresh?.id ?? null
 
-  const applyStatus = (
+  const applyStatus = async (
     target: ContentStatus,
     opts: { scheduledFor?: string } = {}
-  ): boolean => {
-    const fresh = saveContent()
+  ): Promise<boolean> => {
+    const fresh = await saveContent()
     const id = resolveId(fresh)
     if (!id) return false
-    const res = setStatus(type, id, target, actor, opts)
+    const res = await setStatus(type, id, target, actor, opts)
     if (!res.ok) {
       setErrors(res.errors)
       toast.error(res.errors[0] || 'Could not change status')
@@ -351,32 +405,32 @@ export function ContentEditorDialog({
     return true
   }
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (record ? !canEdit : !canCreate) {
       toast.error(record ? 'Your role cannot edit content' : 'Your role cannot create content')
       return
     }
-    saveContent()
+    await saveContent()
   }
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (record && currentStatus === 'published') {
       // Already live: the button becomes a plain content update.
       if (!canEdit) {
         toast.error('Your role cannot edit content')
         return
       }
-      saveContent()
+      await saveContent()
       return
     }
     if (!canPublish) {
       toast.error('Your role cannot publish content')
       return
     }
-    if (applyStatus('published')) toast.success('Published — now live')
+    if (await applyStatus('published')) toast.success('Published — now live')
   }
 
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (!canSchedule) {
       toast.error('Your role cannot schedule content')
       return
@@ -394,13 +448,13 @@ export function ContentEditorDialog({
       toast.error('Scheduled time must be in the future')
       return
     }
-    if (applyStatus('published', { scheduledFor: new Date(ms).toISOString() })) {
+    if (await applyStatus('published', { scheduledFor: new Date(ms).toISOString() })) {
       toast.success(`Scheduled for ${new Date(ms).toLocaleString()}`)
       setScheduleDateTime('')
     }
   }
 
-  const handleStatusSelect = (value: string) => {
+  const handleStatusSelect = async (value: string) => {
     if (!record) return
     const target = value as ContentStatus
     const allowed =
@@ -417,7 +471,7 @@ export function ContentEditorDialog({
     }
     const label =
       target === 'published' ? 'Published' : target === 'archived' ? 'Archived' : 'Moved to draft'
-    if (applyStatus(target)) toast.success(label)
+    if (await applyStatus(target)) toast.success(label)
   }
 
   const addStep = () => {
@@ -639,15 +693,67 @@ export function ContentEditorDialog({
                     <Input value={form.meter} onChange={(e) => set('meter', e.target.value)} placeholder="C.M." />
                   </div>
                 </div>
-                <div>
-                  <FieldLabel>Lyrics *</FieldLabel>
-                  <Textarea
-                    value={form.lyrics}
-                    onChange={(e) => set('lyrics', e.target.value)}
-                    placeholder="Verse 1…"
-                    className="min-h-[130px]"
-                  />
+
+                <div className="space-y-2.5 p-3 rounded-xl bg-secondary/30 border border-border/50">
+                  <div className="flex items-center justify-between gap-2">
+                    <FieldLabel>Lyrics * (Verses & Chorus)</FieldLabel>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px] gap-1"
+                      onClick={() => set('hymn_verses', [...form.hymn_verses, ''])}
+                    >
+                      <Plus className="w-3 h-3" /> Add Verse
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground -mt-1">Add each verse separately and include a chorus if the hymn has one. The full hymn will be saved professionally.</p>
+
+                  <div className="space-y-2">
+                    {form.hymn_verses.map((verse, idx) => (
+                      <div key={idx} className="space-y-1.5 p-2.5 rounded-lg bg-background/70 border border-border/50">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-primary">Verse {idx + 1}</span>
+                          {form.hymn_verses.length > 1 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-red-500"
+                              onClick={() => set('hymn_verses', form.hymn_verses.filter((_, i) => i !== idx))}
+                              aria-label={`Remove verse ${idx + 1}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                        <Textarea
+                          value={verse}
+                          onChange={(e) => {
+                            const next = [...form.hymn_verses]
+                            next[idx] = e.target.value
+                            set('hymn_verses', next)
+                          }}
+                          placeholder={`Enter verse ${idx + 1} lyrics...`}
+                          className="min-h-[90px] text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1.5 p-2.5 rounded-lg bg-background/70 border border-border/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-primary">Chorus (optional)</span>
+                    </div>
+                    <Textarea
+                      value={form.hymn_chorus}
+                      onChange={(e) => set('hymn_chorus', e.target.value)}
+                      placeholder="Enter chorus/refrain lyrics if applicable..."
+                      className="min-h-[80px] text-sm"
+                    />
+                  </div>
                 </div>
+
                 <div>
                   <FieldLabel>Audio URL</FieldLabel>
                   <Input

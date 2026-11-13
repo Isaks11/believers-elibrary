@@ -28,6 +28,8 @@ import {
   recordWriteError,
   recordWriteOutcome,
 } from '@/lib/syncHealth';
+import { friendlyBackendError } from '@/lib/backendHealth';
+import { enqueueOutbox, readOutbox } from '@/lib/cmsOutbox';
 import { recordAudit, type AuditActor } from '@/lib/auditLog';
 import {
   ContentTypeMeta,
@@ -70,16 +72,56 @@ export interface ContentMutationResult<T> {
   ok: boolean;
   record?: T;
   errors: string[];
+  /**
+   * Where the change landed. `queued` means the device copy was updated and
+   * the write was added to the retry outbox because the server was unavailable.
+   */
+  storage?: 'cloud' | 'local' | 'queued';
+  queued?: boolean;
+  /** Non-fatal explanation shown when the change did not reach Postgres. */
+  warning?: string;
 }
 
 export interface ContentStatusResult {
   ok: boolean;
   errors: string[];
+  storage?: 'cloud' | 'local' | 'queued';
+  queued?: boolean;
+  warning?: string;
 }
 
 export interface ContentSort {
   field: 'updated_at' | 'created_at' | 'title' | 'published_at' | 'status';
   dir: 'asc' | 'desc';
+}
+
+export interface StorageFeedback {
+  level: 'success' | 'warning' | 'info';
+  message: string;
+}
+
+/**
+ * Turns a mutation's `storage` into a toast the admin can trust:
+ * cloud = success, queued = warning (device copy saved, retry pending),
+ * local = info (no database write happened).
+ */
+export function storageFeedback(
+  result: { storage?: 'cloud' | 'local' | 'queued'; warning?: string },
+  successMessage: string
+): StorageFeedback {
+  if (result.storage === 'cloud') {
+    return { level: 'success', message: `${successMessage} · saved to the database` };
+  }
+  if (result.storage === 'queued') {
+    return {
+      level: 'warning',
+      message: `${successMessage} · saved on this device and queued for retry. ${result.warning ?? ''}`.trim(),
+    };
+  }
+  return {
+    level: 'info',
+    message: `${successMessage} · saved on this device only. ${result.warning ?? ''}`.trim(),
+  };
 }
 
 export interface ListContentOptions {
@@ -101,6 +143,154 @@ export interface ContentListResult<T> {
 
 function isServerBacked(type: ContentEntityType): boolean {
   return CMS_SERVER_TYPES.includes(type);
+}
+
+// --- Cloud context -----------------------------------------------------------
+
+/**
+ * A write can only reach Postgres when Supabase is configured *and* the
+ * current session is a Supabase session. Demo/guest/device-local sessions are
+ * explicitly marked so the UI can say "saved on this device only" instead of
+ * pretending the database was updated.
+ */
+type CloudContext = {
+  configured: boolean;
+  signedIn: boolean;
+  userId: string | null;
+  reason?: string;
+};
+
+async function getCloudContext(): Promise<CloudContext> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { configured: false, signedIn: false, userId: null };
+  }
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      return { configured: true, signedIn: false, userId: null, reason: error.message };
+    }
+    return {
+      configured: true,
+      signedIn: Boolean(data.session?.user),
+      userId: data.session?.user?.id ?? null,
+    };
+  } catch (err) {
+    return {
+      configured: true,
+      signedIn: false,
+      userId: null,
+      reason: err instanceof Error ? err.message : 'Could not read the session.',
+    };
+  }
+}
+
+/** Device-local YYYY-MM-DD (matches the value a date input produces). */
+function todayDateKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate()
+  ).padStart(2, '0')}`;
+}
+
+function isIsoDate(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+/**
+ * Queues a failed cloud write for retry. The local copy is already saved, so
+ * the admin loses nothing; `storage: 'queued'` tells the UI the database has
+ * not received it yet.
+ */
+function queueCloudWrite(
+  op: 'upsert' | 'delete',
+  type: ContentEntityType,
+  record: AnyContentRecord | { id: string }
+): void {
+  const payload =
+    op === 'upsert' ? payloadFor(type, record as AnyContentRecord) : undefined;
+  enqueueOutbox({
+    op,
+    type,
+    table: ContentTypeMeta[type].table,
+    recordId: record.id,
+    ...(payload ? { payload } : {}),
+  });
+}
+
+function cloudFailureMessage(
+  type: ContentEntityType,
+  context: CloudContext,
+  raw: string | null | undefined
+): string {
+  if (!context.signedIn) {
+    return 'Saved on this device only. Sign in with a Supabase account (Editor/Admin) to write to the database.';
+  }
+  const friendly = friendlyBackendError(raw);
+  return `${ContentTypeMeta[type].singularLabel}: ${friendly}`;
+}
+
+interface CloudWriteOutcome {
+  storage: 'cloud' | 'local' | 'queued';
+  queued: boolean;
+  warning?: string;
+}
+
+/**
+ * Performs the cloud half of a mutation and reports where the write actually
+ * landed. The device copy has already been written by the caller, so a cloud
+ * failure is never treated as a lost edit:
+ *
+ * - not configured / legacy table  → `local` (no database step exists)
+ * - configured but signed out     → `local` + "sign in" warning
+ * - server accepted the write     → `cloud`
+ * - server unreachable / rejected → `queued` + retry outbox + friendly warning
+ */
+async function persistToCloud(
+  type: ContentEntityType,
+  op: 'upsert' | 'delete',
+  record: AnyContentRecord | { id: string },
+  write: () => PromiseLike<WriteOutcome>,
+  context?: CloudContext
+): Promise<CloudWriteOutcome> {
+  if (!isServerBacked(type)) return { storage: 'local', queued: false };
+
+  const cloud = context ?? (await getCloudContext());
+  if (!cloud.configured || !supabase) {
+    return { storage: 'local', queued: false };
+  }
+  if (!cloud.signedIn) {
+    return {
+      storage: 'local',
+      queued: false,
+      warning: cloudFailureMessage(type, cloud, 'No Supabase session.'),
+    };
+  }
+
+  try {
+    const result = await write();
+    if (result?.error) {
+      const raw = result.error.message || 'cloud write failed';
+      recordSyncFailure(CMS_SCOPE, raw);
+      queueCloudWrite(op, type, record);
+      return {
+        storage: 'queued',
+        queued: true,
+        warning: cloudFailureMessage(type, cloud, raw),
+      };
+    }
+    recordWriteOutcome(CMS_SCOPE, result);
+    clearSyncFailure(CMS_SCOPE);
+    return { storage: 'cloud', queued: false };
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : 'network unavailable';
+    recordWriteError(CMS_SCOPE, err);
+    queueCloudWrite(op, type, record);
+    return {
+      storage: 'queued',
+      queued: true,
+      warning: cloudFailureMessage(type, cloud, raw),
+    };
+  }
 }
 
 // --- Local store helpers (per-type `cms_<table>_v1` keys, guarded JSON I/O) ---
@@ -173,7 +363,10 @@ function appendRevision(type: ContentEntityType, revision: ContentRevision): voi
   );
   writeLocalRevisions([revision, ...next]);
 
-  if (isSupabaseConfigured && supabase) {
+  // Server-backed CMS tables create revisions in a BEFORE UPDATE trigger
+  // (`cms_touch_content`). Only the legacy tables (no trigger) need the client
+  // copy; inserting here too would collide on (entity_type, entity_id, version).
+  if (!isServerBacked(type) && isSupabaseConfigured && supabase) {
     bestEffortWrite(
       supabase.from('content_revisions').insert({
         entity_type: revision.entity_type,
@@ -350,7 +543,10 @@ function uniqueSlug(type: ContentEntityType, title: string): string {
 function defaultFields(type: ContentEntityType): Record<string, unknown> {
   switch (type) {
     case 'devotional':
-      return { verse_text: null, translation: null, devotional_date: null };
+      // `devotionals.devotional_date` is NOT NULL on the server. Default it to
+      // today so a manual draft (where the date field is optional in the form)
+      // cannot fail Postgres validation after appearing to save locally.
+      return { verse_text: null, translation: null, devotional_date: todayDateKey() };
     case 'reading_plan':
       return { description: null, structure: [] };
     case 'hymn':
@@ -424,6 +620,13 @@ export function validateContent(type: ContentEntityType, input: unknown): string
     errors.push('Title must include letters or numbers so a URL slug can be generated.');
   }
 
+  if (type === 'devotional') {
+    const date = record.devotional_date;
+    if (date !== undefined && date !== null && date !== '' && !isIsoDate(date)) {
+      errors.push('devotional_date must be a valid YYYY-MM-DD date.');
+    }
+  }
+
   return errors;
 }
 
@@ -440,7 +643,7 @@ export async function listContent<K extends ContentEntityType>(
   type: K,
   opts: ListContentOptions = {}
 ): Promise<ContentListResult<ContentRecordMap[K]>> {
-  publishDueContent(type);
+  await publishDueContent(type);
 
   const page = Math.max(1, Math.floor(opts.page ?? 1));
   const pageSize = Math.max(1, Math.floor(opts.pageSize ?? DEFAULT_PAGE_SIZE));
@@ -463,6 +666,8 @@ export async function listContent<K extends ContentEntityType>(
 
   if (!isSupabaseConfigured || !supabase || !isServerBacked(type)) return fallback;
 
+  const cloud = await getCloudContext();
+
   try {
     const meta = ContentTypeMeta[type];
     let query = supabase.from(meta.table).select('*', { count: 'exact' });
@@ -480,12 +685,37 @@ export async function listContent<K extends ContentEntityType>(
 
     const serverRows = (data ?? []) as unknown as ContentRecordMap[K][];
     const localById = new Map(localAll.map((row) => [row.id, row]));
-    const rows = serverRows.map((row) => {
+    const merged = serverRows.map((row) => {
       const local = localById.get(row.id);
       // Never let a stale server row overwrite a newer local edit.
       return local && updatedTs(local) > updatedTs(row) ? local : row;
     });
-    return { rows, total: count ?? rows.length, page, pageSize, categories: fallback.categories };
+
+    // Rows waiting in the retry outbox (failed cloud writes) are not on the
+    // server yet. Device-local sessions (demo/guest) are authoritative for
+    // this browser, so their rows are merged too. Without this, a queued
+    // upload would appear to vanish the moment the server became reachable.
+    const outboxIds = new Set(
+      readOutbox()
+        .filter((entry) => entry.type === type && entry.recordId)
+        .map((entry) => entry.recordId as string)
+    );
+    const pendingLocal = localAll.filter((row) => {
+      if (!matchesFilters(row, type, opts.status, q, opts.category)) return false;
+      return outboxIds.has(row.id) || (cloud.configured && !cloud.signedIn);
+    });
+    const pageIds = new Set(merged.map((row) => row.id));
+    const extraOnPage = page === 1 ? pendingLocal.filter((row) => !pageIds.has(row.id)) : [];
+    const rows = [...extraOnPage, ...merged].slice(0, pageSize);
+    const extraTotal = pendingLocal.filter((row) => !pageIds.has(row.id)).length;
+
+    return {
+      rows,
+      total: (count ?? merged.length) + extraTotal,
+      page,
+      pageSize,
+      categories: collectCategories([...localAll, ...serverRows]),
+    };
   } catch (err) {
     recordSyncFailure(CMS_SCOPE, err instanceof Error ? err.message : 'network unavailable');
     return fallback;
@@ -556,12 +786,19 @@ export async function getContentBySlug<K extends ContentEntityType>(
 
 // --- Mutations ---------------------------------------------------------------
 
-/** Creates a draft record: validated input, generated id + unique slug, version 1. */
-export function createContent<K extends ContentEntityType>(
+/**
+ * Creates a draft record: validated input, generated id + unique slug, version 1.
+ *
+ * The device copy is written first (so nothing is lost offline), then the
+ * insert is awaited. `storage` tells the caller whether the row reached
+ * Postgres (`cloud`), stayed on the device (`local`) or is waiting in the retry
+ * outbox (`queued`).
+ */
+export async function createContent<K extends ContentEntityType>(
   type: K,
   input: ContentDraft<ContentRecordMap[K]>,
   actor: AuditActor
-): ContentMutationResult<ContentRecordMap[K]> {
+): Promise<ContentMutationResult<ContentRecordMap[K]>> {
   const errors = validateContent(type, input);
   if (errors.length > 0) return { ok: false, errors };
 
@@ -597,9 +834,10 @@ export function createContent<K extends ContentEntityType>(
   const rows = readLocalRecords(type);
   writeLocalRecords(type, [record, ...rows]);
 
-  // 2. best-effort Supabase insert.
+  // 2. Awaited Supabase insert — the result tells the admin where it landed.
+  let cloud: CloudWriteOutcome = { storage: 'local', queued: false };
   if (isSupabaseConfigured && supabase && isServerBacked(type)) {
-    bestEffortWrite(
+    cloud = await persistToCloud(type, 'upsert', record, () =>
       supabase.from(ContentTypeMeta[type].table).insert(payloadFor(type, record))
     );
   }
@@ -608,24 +846,36 @@ export function createContent<K extends ContentEntityType>(
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
   }
-  return { ok: true, record, errors: [] };
+  return {
+    ok: true,
+    record,
+    errors: [],
+    storage: cloud.storage,
+    queued: cloud.queued,
+    ...(cloud.warning ? { warning: cloud.warning } : {}),
+  };
 }
 
 export interface BulkCreateResult<T> {
   created: T[];
   failedCount: number;
   errors: { index: number; errors: string[] }[];
+  storage?: 'cloud' | 'local' | 'queued';
+  queued?: boolean;
+  warning?: string;
 }
 
 /**
  * Bulk creates multiple content records at once (dual-writes to localStorage and Supabase).
- * Used for bulk uploading devotionals with pre-assigned dates.
+ * Used for bulk uploading devotionals/hymns with pre-assigned dates. Each
+ * record is individually queued in the retry outbox if the bulk insert fails,
+ * so a partial outage never loses a row the admin already saw as imported.
  */
-export function bulkCreateContent<K extends ContentEntityType>(
+export async function bulkCreateContent<K extends ContentEntityType>(
   type: K,
   items: Array<ContentDraft<ContentRecordMap[K]> & { status?: ContentStatus }>,
   actor: AuditActor
-): BulkCreateResult<ContentRecordMap[K]> {
+): Promise<BulkCreateResult<ContentRecordMap[K]>> {
   const existingRows = readLocalRecords(type);
   const now = new Date().toISOString();
   const created: ContentRecordMap[K][] = [];
@@ -682,14 +932,56 @@ export function bulkCreateContent<K extends ContentEntityType>(
     created.push(record);
   }
 
+  let cloud: CloudWriteOutcome = { storage: 'local', queued: false };
+
   if (newRecords.length > 0) {
     // 1. Dual-write to localStorage
     writeLocalRecords(type, [...newRecords, ...existingRows]);
 
-    // 2. Best-effort Supabase bulk insert
+    // 2. Awaited Supabase bulk insert.
     if (isSupabaseConfigured && supabase && isServerBacked(type)) {
+      const context = await getCloudContext();
       const payloads = newRecords.map((rec) => payloadFor(type, rec as unknown as AnyContentRecord));
-      bestEffortWrite(supabase.from(ContentTypeMeta[type].table).insert(payloads));
+      if (!context.signedIn) {
+        cloud = {
+          storage: 'local',
+          queued: false,
+          warning: cloudFailureMessage(type, context, 'No Supabase session.'),
+        };
+      } else {
+        try {
+          const result = await supabase.from(ContentTypeMeta[type].table).insert(payloads);
+          if (result.error) {
+            recordSyncFailure(CMS_SCOPE, result.error.message);
+            newRecords.forEach((rec) =>
+              queueCloudWrite('upsert', type, rec as unknown as AnyContentRecord)
+            );
+            cloud = {
+              storage: 'queued',
+              queued: true,
+              warning: cloudFailureMessage(type, context, result.error.message),
+            };
+          } else {
+            recordWriteOutcome(CMS_SCOPE, result);
+            clearSyncFailure(CMS_SCOPE);
+            cloud = { storage: 'cloud', queued: false };
+          }
+        } catch (err) {
+          recordWriteError(CMS_SCOPE, err);
+          newRecords.forEach((rec) =>
+            queueCloudWrite('upsert', type, rec as unknown as AnyContentRecord)
+          );
+          cloud = {
+            storage: 'queued',
+            queued: true,
+            warning: cloudFailureMessage(
+              type,
+              context,
+              err instanceof Error ? err.message : 'network unavailable'
+            ),
+          };
+        }
+      }
     }
 
     // 3. Record audit
@@ -708,6 +1000,9 @@ export function bulkCreateContent<K extends ContentEntityType>(
     created,
     failedCount: errors.length,
     errors,
+    storage: cloud.storage,
+    queued: cloud.queued,
+    ...(cloud.warning ? { warning: cloud.warning } : {}),
   };
 }
 
@@ -716,12 +1011,12 @@ export function bulkCreateContent<K extends ContentEntityType>(
  * new state into `content_revisions`, dual-writes the row and audits the edit.
  * Status/workflow fields are immutable here — use `setStatus`.
  */
-export function updateContent<K extends ContentEntityType>(
+export async function updateContent<K extends ContentEntityType>(
   type: K,
   id: string,
   patch: ContentDraft<ContentRecordMap[K]>,
   actor: AuditActor
-): ContentMutationResult<ContentRecordMap[K]> {
+): Promise<ContentMutationResult<ContentRecordMap[K]>> {
   const rows = readLocalRecords(type);
   const index = rows.findIndex((row) => row.id === id);
   if (index === -1) return { ok: false, errors: [`${ContentTypeMeta[type].singularLabel} not found.`] };
@@ -757,9 +1052,10 @@ export function updateContent<K extends ContentEntityType>(
     created_at: record.updated_at,
   });
 
-  // 2. best-effort Supabase update.
+  // 2. Awaited Supabase update.
+  let cloud: CloudWriteOutcome = { storage: 'local', queued: false };
   if (isSupabaseConfigured && supabase && isServerBacked(type)) {
-    bestEffortWrite(
+    cloud = await persistToCloud(type, 'upsert', record, () =>
       supabase.from(ContentTypeMeta[type].table).update(payloadFor(type, record)).eq('id', id)
     );
   }
@@ -768,7 +1064,14 @@ export function updateContent<K extends ContentEntityType>(
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
   }
-  return { ok: true, record, errors: [] };
+  return {
+    ok: true,
+    record,
+    errors: [],
+    storage: cloud.storage,
+    queued: cloud.queued,
+    ...(cloud.warning ? { warning: cloud.warning } : {}),
+  };
 }
 
 export interface SetStatusOptions {
@@ -786,13 +1089,13 @@ export interface SetStatusOptions {
  * - archived → draft restores the item.
  * Scheduling in the past is rejected. Every transition is audited.
  */
-export function setStatus<K extends ContentEntityType>(
+export async function setStatus<K extends ContentEntityType>(
   type: K,
   id: string,
   status: ContentStatus,
   actor: AuditActor,
   opts: SetStatusOptions = {}
-): ContentStatusResult {
+): Promise<ContentStatusResult> {
   const rows = readLocalRecords(type);
   const index = rows.findIndex((row) => row.id === id);
   if (index === -1) return { ok: false, errors: [`${ContentTypeMeta[type].singularLabel} not found.`] };
@@ -847,9 +1150,10 @@ export function setStatus<K extends ContentEntityType>(
   next[index] = record;
   writeLocalRecords(type, next);
 
-  // 2. best-effort Supabase update.
+  // 2. Awaited Supabase update.
+  let cloud: CloudWriteOutcome = { storage: 'local', queued: false };
   if (isSupabaseConfigured && supabase && isServerBacked(type)) {
-    bestEffortWrite(
+    cloud = await persistToCloud(type, 'upsert', record, () =>
       supabase.from(ContentTypeMeta[type].table).update(payloadFor(type, record)).eq('id', id)
     );
   }
@@ -872,7 +1176,13 @@ export function setStatus<K extends ContentEntityType>(
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
   }
-  return { ok: true, errors: [] };
+  return {
+    ok: true,
+    errors: [],
+    storage: cloud.storage,
+    queued: cloud.queued,
+    ...(cloud.warning ? { warning: cloud.warning } : {}),
+  };
 }
 
 /** True while a published row is waiting for its scheduled go-live time. */
@@ -888,7 +1198,7 @@ export function isScheduled(record: { status: ContentStatus; scheduled_for: stri
  * `listContent`, so scheduled content goes live whenever the CMS is opened.
  * Returns how many rows went live.
  */
-export function publishDueContent(type: ContentEntityType): number {
+export async function publishDueContent(type: ContentEntityType): Promise<number> {
   const rows = readLocalRecords(type);
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
@@ -911,16 +1221,16 @@ export function publishDueContent(type: ContentEntityType): number {
   if (due.length > 0) {
     // 1. localStorage first.
     writeLocalRecords(type, next);
-    // 2. best-effort Supabase updates.
+    // 2. Awaited Supabase updates (failures are queued for retry).
     if (isSupabaseConfigured && supabase && isServerBacked(type)) {
-      due.forEach((row) => {
-        bestEffortWrite(
+      for (const row of due) {
+        await persistToCloud(type, 'upsert', row, () =>
           supabase
             .from(ContentTypeMeta[type].table)
             .update(payloadFor(type, row))
             .eq('id', row.id)
         );
-      });
+      }
     }
   }
   return due.length;
@@ -931,11 +1241,11 @@ export function publishDueContent(type: ContentEntityType): number {
  * Published content must be archived first. Audited before removal so the
  * trail keeps the id/title even after the row is gone.
  */
-export function deleteContent<K extends ContentEntityType>(
+export async function deleteContent<K extends ContentEntityType>(
   type: K,
   id: string,
   actor: AuditActor
-): ContentStatusResult {
+): Promise<ContentStatusResult> {
   const rows = readLocalRecords(type);
   const existing = rows.find((row) => row.id === id);
   if (!existing) return { ok: false, errors: [`${ContentTypeMeta[type].singularLabel} not found.`] };
@@ -958,10 +1268,11 @@ export function deleteContent<K extends ContentEntityType>(
     readLocalRevisions().filter((rev) => !(rev.entity_type === type && rev.entity_id === id))
   );
 
-  // 2. best-effort Supabase deletes.
+  // 2. Awaited Supabase deletes.
+  let cloud: CloudWriteOutcome = { storage: 'local', queued: false };
   if (isSupabaseConfigured && supabase) {
     if (isServerBacked(type)) {
-      bestEffortWrite(
+      cloud = await persistToCloud(type, 'delete', { id }, () =>
         supabase.from(ContentTypeMeta[type].table).delete().eq('id', id)
       );
     }
@@ -974,7 +1285,13 @@ export function deleteContent<K extends ContentEntityType>(
     window.dispatchEvent(new CustomEvent('cms:content-changed', { detail: { type } }));
   }
 
-  return { ok: true, errors: [] };
+  return {
+    ok: true,
+    errors: [],
+    storage: cloud.storage,
+    queued: cloud.queued,
+    ...(cloud.warning ? { warning: cloud.warning } : {}),
+  };
 }
 
 // --- Revisions ---------------------------------------------------------------
@@ -1023,12 +1340,12 @@ export async function listRevisions<K extends ContentEntityType>(
  * workflow state — status / published_at / scheduled_for — is kept as-is).
  * The restored state is itself snapshotted so the history stays contiguous.
  */
-export function restoreRevision<K extends ContentEntityType>(
+export async function restoreRevision<K extends ContentEntityType>(
   type: K,
   id: string,
   version: number,
   actor: AuditActor
-): ContentMutationResult<ContentRecordMap[K]> {
+): Promise<ContentMutationResult<ContentRecordMap[K]>> {
   const rows = readLocalRecords(type);
   const index = rows.findIndex((row) => row.id === id);
   if (index === -1) return { ok: false, errors: [`${ContentTypeMeta[type].singularLabel} not found.`] };
@@ -1069,9 +1386,10 @@ export function restoreRevision<K extends ContentEntityType>(
     created_at: nowIso,
   });
 
-  // 2. best-effort Supabase update.
+  // 2. Awaited Supabase update.
+  let cloud: CloudWriteOutcome = { storage: 'local', queued: false };
   if (isSupabaseConfigured && supabase && isServerBacked(type)) {
-    bestEffortWrite(
+    cloud = await persistToCloud(type, 'upsert', record, () =>
       supabase.from(ContentTypeMeta[type].table).update(payloadFor(type, record)).eq('id', id)
     );
   }
@@ -1080,5 +1398,12 @@ export function restoreRevision<K extends ContentEntityType>(
     restored_version: revision.version,
     version: nextVersion,
   });
-  return { ok: true, record, errors: [] };
+  return {
+    ok: true,
+    record,
+    errors: [],
+    storage: cloud.storage,
+    queued: cloud.queued,
+    ...(cloud.warning ? { warning: cloud.warning } : {}),
+  };
 }

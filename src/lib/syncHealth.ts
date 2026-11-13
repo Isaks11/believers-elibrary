@@ -72,6 +72,11 @@ export function getSyncHealthSummary(): { pending: number; scopes: string[] } {
   return { pending: failures.length, scopes: failures.map((f) => f.scope) };
 }
 
+/** Number of feature scopes with a recorded unsynced failure. */
+export function getPendingSyncCount(): number {
+  return getSyncHealthSummary().pending;
+}
+
 type WriteResult = { error?: { message?: string } | null } | null | undefined;
 
 /**

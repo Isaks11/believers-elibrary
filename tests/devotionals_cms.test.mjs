@@ -35,7 +35,7 @@ test('mockDevotionalHymnData does not seed fake mock devotionals', () => {
 })
 
 test('contentAdmin exports bulkCreateContent for devotional bulk upload', () => {
-  assert.match(contentAdminSrc, /export function bulkCreateContent<K extends ContentEntityType>/)
+  assert.match(contentAdminSrc, /export (async )?function bulkCreateContent<K extends ContentEntityType>/)
   assert.match(contentAdminSrc, /takenSlugs\.add\(slug\)/)
   assert.match(contentAdminSrc, /cms:content-changed/)
 })

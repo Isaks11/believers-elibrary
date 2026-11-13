@@ -178,22 +178,22 @@ test('contentAdmin uses the localStorage-first dual-write pattern with syncHealt
   assert.ok(adminSrc.includes('recordWriteError'), 'must reuse syncHealth recordWriteError');
 
   // createContent: local write happens BEFORE the Supabase insert
-  const createSeg = sliceBetween(adminSrc, 'export function createContent', 'export function updateContent');
+  const createSeg = sliceBetween(adminSrc, 'export async function createContent', 'export interface BulkCreateResult');
   const localIdx = createSeg.indexOf('writeLocalRecords(');
   const insertIdx = createSeg.indexOf('.insert(');
   assert.ok(localIdx >= 0, 'createContent must write localStorage');
   assert.ok(insertIdx > localIdx, 'createContent must insert to Supabase after the local write');
-  assert.match(createSeg, /if \(isSupabaseConfigured && supabase/);
+  assert.match(createSeg, /isSupabaseConfigured && supabase/);
 
   // updateContent: local write before server update
-  const updateSeg = sliceBetween(adminSrc, 'export function updateContent', 'export interface SetStatusOptions');
+  const updateSeg = sliceBetween(adminSrc, 'export async function updateContent', 'export interface SetStatusOptions');
   const uLocalIdx = updateSeg.indexOf('writeLocalRecords(');
   const updateIdx = updateSeg.indexOf('.update(');
   assert.ok(uLocalIdx >= 0, 'updateContent must write localStorage');
   assert.ok(updateIdx > uLocalIdx, 'updateContent must update Supabase after the local write');
 
   // deleteContent: local write before server delete
-  const deleteSeg = sliceBetween(adminSrc, 'export function deleteContent', 'function sortRevisions');
+  const deleteSeg = sliceBetween(adminSrc, 'export async function deleteContent', '// --- Revisions');
   const dLocalIdx = deleteSeg.indexOf('writeLocalRecords(');
   const deleteIdx = deleteSeg.indexOf('.delete(');
   assert.ok(dLocalIdx >= 0, 'deleteContent must write localStorage');
@@ -209,12 +209,12 @@ test('contentAdmin generates slugs with -2/-3 suffix uniqueness', () => {
 });
 
 test('contentAdmin bumps versions, snapshots revisions and audits updates', () => {
-  const updateSeg = sliceBetween(adminSrc, 'export function updateContent', 'export interface SetStatusOptions');
+  const updateSeg = sliceBetween(adminSrc, 'export async function updateContent', 'export interface SetStatusOptions');
   assert.ok(
     updateSeg.includes('(existing.version || 1) + 1'),
     'updateContent must bump the version'
   );
-  const createSeg = sliceBetween(adminSrc, 'export function createContent', 'export function updateContent');
+  const createSeg = sliceBetween(adminSrc, 'export async function createContent', 'export interface BulkCreateResult');
   assert.ok(createSeg.includes('version: 1'), 'createContent sets version 1');
   assert.ok(updateSeg.includes('appendRevision'), 'updateContent must snapshot a revision');
   assert.ok(
@@ -226,7 +226,7 @@ test('contentAdmin bumps versions, snapshots revisions and audits updates', () =
     'update must be audited'
   );
   // Restore re-applies a snapshot as a new version
-  const restoreSeg = sliceBetween(adminSrc, 'export function restoreRevision', null);
+  const restoreSeg = sliceBetween(adminSrc, 'export async function restoreRevision', null);
   assert.ok(restoreSeg.includes('revision.snapshot'), 'restore must read the snapshot');
   assert.ok(restoreSeg.includes('nextVersion'), 'restore must bump to a new version');
 });
@@ -234,8 +234,8 @@ test('contentAdmin bumps versions, snapshots revisions and audits updates', () =
 test('contentAdmin enforces the publish/schedule/unpublish/archive workflow', () => {
   const statusSeg = sliceBetween(
     adminSrc,
-    'export function setStatus',
-    'export function isScheduled'
+    'export async function setStatus',
+    '/** True while a published row is waiting for its scheduled go-live time. */'
   );
   // Scheduling rules
   assert.match(statusSeg, /Scheduled time must be in the future/);
@@ -251,7 +251,7 @@ test('contentAdmin enforces the publish/schedule/unpublish/archive workflow', ()
 
   // isScheduled + publishDueContent
   assert.ok(adminSrc.includes('export function isScheduled('), 'isScheduled helper must exist');
-  const dueBody = sliceBetween(adminSrc, 'export function publishDueContent', 'export function deleteContent');
+  const dueBody = sliceBetween(adminSrc, 'export async function publishDueContent', 'export async function deleteContent');
   assert.ok(dueBody.includes("'publish'"), 'due scheduled items must be audited as published');
   assert.ok(dueBody.includes('published_at: nowIso'), 'due scheduled items get published_at');
   assert.ok(dueBody.includes('scheduled_for: null'), 'due scheduled items clear scheduled_for');
@@ -261,7 +261,7 @@ test('contentAdmin enforces the publish/schedule/unpublish/archive workflow', ()
   assert.ok(listSeg.includes('publishDueContent(type)'), 'listContent must publish due scheduled content');
 
   // Delete rules
-  const deleteSeg = sliceBetween(adminSrc, 'export function deleteContent', 'function sortRevisions');
+  const deleteSeg = sliceBetween(adminSrc, 'export async function deleteContent', '// --- Revisions');
   assert.match(deleteSeg, /Published content must be archived before/);
   assert.ok(deleteSeg.includes("recordAudit(actor, 'delete', type, id"), 'delete must be audited');
 });

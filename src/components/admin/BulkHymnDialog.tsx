@@ -12,10 +12,11 @@ import {
   Music2,
   X,
   Loader2,
+  Info,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { parseCsvToGrid } from '@/lib/csvParser'
-import { bulkCreateContent } from '@/lib/contentAdmin'
+import { bulkCreateContent, storageFeedback } from '@/lib/contentAdmin'
 import { useAuth } from '@/contexts/AuthContext'
 import type { ContentDraft, HymnRecord } from '@/types/content'
 
@@ -32,34 +33,83 @@ interface ParsedHymnRow {
   category: string | null
   composer: string | null
   meter: string | null
+  language: string | null
+  tags: string[]
+  audio_url: string | null
+  offline_policy: 'online_only' | 'optional' | 'essential'
+  status: 'draft' | 'published'
+}
+
+function parseTags(raw: string): string[] {
+  if (!raw) return []
+  return raw.split(/[;|]/).map((t) => t.trim()).filter(Boolean)
+}
+
+function normalizeOfflinePolicy(raw: string): 'online_only' | 'optional' | 'essential' {
+  const v = raw.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (v === 'essential' || v === 'required') return 'essential'
+  if (v === 'optional' || v === 'cache' || v === 'cached') return 'optional'
+  return 'online_only'
+}
+
+function normalizeStatus(raw: string): 'draft' | 'published' {
+  return raw.trim().toLowerCase() === 'draft' ? 'draft' : 'published'
+}
+
+function normalizeHeader(h: string): string {
+  const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (clean === 'hymnnumber' || clean === 'no' || clean === 'num') return 'number'
+  if (clean === 'name') return 'title'
+  if (clean === 'text' || clean === 'words' || clean === 'verses') return 'lyrics'
+  if (clean === 'author' || clean === 'writer') return 'composer'
+  if (clean === 'lang') return 'language'
+  if (clean === 'tag' || clean === 'keywords') return 'tags'
+  if (clean === 'audio' || clean === 'audiourl' || clean === 'audiofile') return 'audio_url'
+  if (clean === 'offline' || clean === 'offlinepolicy') return 'offline_policy'
+  return clean
 }
 
 function generateHymnsTemplateCsv(): string {
   const rows = [
-    ['number', 'title', 'lyrics', 'category', 'composer', 'meter'],
+    ['number', 'title', 'lyrics', 'category', 'composer', 'meter', 'language', 'tags', 'audio_url', 'offline_policy', 'status'],
     [
       '1',
       'Amazing Grace',
-      'Amazing grace! How sweet the sound\nThat saved a wretch like me!\nI once was lost, but now am found;\nWas blind, but now I see.\n\n\'Twas grace that taught my heart to fear,\nAnd grace my fears relieved;\nHow precious did that grace appear\nThe hour I first believed!\n\nThrough many dangers, toils, and snares,\nI have already come;\n\'Tis grace hath brought me safe thus far,\nAnd grace will lead me home.',
-      'Grace',
+      '1. Amazing grace! How sweet the sound\n   That saved a wretch like me!\n   I once was lost, but now am found;\n   Was blind, but now I see.\n\n2. \'Twas grace that taught my heart to fear,\n   And grace my fears relieved;\n   How precious did that grace appear\n   The hour I first believed.',
+      'Worship',
       'John Newton',
-      'CM',
+      '8.6.8.6',
+      'English',
+      'grace; salvation; testimony',
+      '',
+      'optional',
+      'published',
     ],
     [
       '2',
-      'Holy, Holy, Holy',
-      'Holy, holy, holy! Lord God Almighty!\nEarly in the morning our song shall rise to Thee;\nHoly, holy, holy, merciful and mighty!\nGod in three Persons, blessed Trinity!\n\nHoly, holy, holy! All the saints adore Thee,\nCasting down their golden crowns around the glassy sea;\nCherubim and seraphim falling down before Thee,\nWhich wert, and art, and evermore shalt be.',
+      'How Great Thou Art',
+      '1. O Lord my God, when I in awesome wonder\n   Consider all the worlds Thy hands have made,\n   I see the stars, I hear the rolling thunder,\n   Thy power throughout the universe displayed.\n\n   Then sings my soul, my Savior God, to Thee,\n   How great Thou art, how great Thou art!',
       'Praise',
-      'Reginald Heber',
-      '11.12.12.10',
+      'Carl Boberg',
+      '11.10.11.10',
+      'English',
+      'praise; creation; majesty',
+      '',
+      'optional',
+      'published',
     ],
     [
       '3',
-      'Great Is Thy Faithfulness',
-      'Great is Thy faithfulness, O God my Father,\nThere is no shadow of turning with Thee;\nThou changest not, Thy compassions, they fail not;\nAs Thou hast been Thou forever wilt be.\n\nGreat is Thy faithfulness! Great is Thy faithfulness!\nMorning by morning new mercies I see;\nAll I have needed Thy hand hath provided;\nGreat is Thy faithfulness, Lord, unto me!',
-      'Faith',
-      'Thomas Chisholm',
-      '11.10.11.10',
+      'It Is Well With My Soul',
+      '1. When peace like a river attendeth my way,\n   When sorrows like sea billows roll;\n   Whatever my lot, Thou hast taught me to say,\n   "It is well, it is well with my soul."\n\n   It is well with my soul,\n   It is well, it is well with my soul.',
+      'Comfort',
+      'Horatio Spafford',
+      '11.8.11.9',
+      'English',
+      'peace; comfort; trust',
+      '',
+      'online_only',
+      'draft',
     ],
   ]
 
@@ -96,12 +146,12 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.setAttribute('href', url)
-    link.setAttribute('download', 'hymns_template.csv')
+    link.setAttribute('download', 'hymns_bulk_template.csv')
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    toast.success('Downloaded hymns_template.csv')
+    toast.success('Downloaded hymns_bulk_template.csv')
   }
 
   const handleFileProcess = (file: File) => {
@@ -120,76 +170,86 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
       }
 
       const grid = parseCsvToGrid(text)
-      if (grid.length === 0) {
-        setErrors([{ rowNumber: 0, message: 'CSV file is empty' }])
+      if (grid.length < 2) {
+        toast.error('CSV file must contain a header row and at least one data row')
         return
       }
 
-      const headers = grid[0].map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ''))
-      const titleIdx = headers.indexOf('title')
-      const lyricsIdx = headers.indexOf('lyrics')
-      const numberIdx = headers.indexOf('number')
-      const categoryIdx = headers.indexOf('category')
-      const composerIdx = headers.indexOf('composer') !== -1 ? headers.indexOf('composer') : headers.indexOf('author')
-      const meterIdx = headers.indexOf('meter')
+      const headers = grid[0].map((h) => normalizeHeader(h.trim()))
+      const idx = (name: string) => headers.indexOf(name)
+      const numberIdx = idx('number')
+      const titleIdx = idx('title')
+      const lyricsIdx = idx('lyrics')
+      const categoryIdx = idx('category')
+      const composerIdx = idx('composer')
+      const meterIdx = idx('meter')
+      const languageIdx = idx('language')
+      const tagsIdx = idx('tags')
+      const audioIdx = idx('audio_url')
+      const offlineIdx = idx('offline_policy')
+      const statusIdx = idx('status')
 
       if (titleIdx === -1 || lyricsIdx === -1) {
-        setErrors([{ rowNumber: 1, message: 'CSV must contain at least "title" and "lyrics" columns.' }])
+        toast.error('CSV must include required columns: title and lyrics')
         return
       }
 
       const parsedValid: ParsedHymnRow[] = []
       const parsedErrors: { rowNumber: number; message: string }[] = []
 
-      grid.slice(1).forEach((row, i) => {
-        const rowNum = i + 2
+      for (let i = 1; i < grid.length; i++) {
+        const row = grid[i]
+        if (row.every((cell) => !cell?.trim())) continue
+
+        const rowNum = i + 1
         const title = (row[titleIdx] || '').trim()
         const lyrics = (row[lyricsIdx] || '').trim()
-        const numStr = numberIdx !== -1 ? (row[numberIdx] || '').trim() : ''
-        const category = categoryIdx !== -1 ? (row[categoryIdx] || '').trim() : ''
-        const composer = composerIdx !== -1 ? (row[composerIdx] || '').trim() : ''
-        const meter = meterIdx !== -1 ? (row[meterIdx] || '').trim() : ''
 
         if (!title) {
-          parsedErrors.push({ rowNumber: rowNum, message: 'Hymn title is required' })
-          return
+          parsedErrors.push({ rowNumber: rowNum, message: 'Title is required' })
+          continue
         }
         if (!lyrics) {
-          parsedErrors.push({ rowNumber: rowNum, message: 'Hymn lyrics are required' })
-          return
+          parsedErrors.push({ rowNumber: rowNum, message: 'Lyrics are required' })
+          continue
         }
 
+        const numStr = numberIdx !== -1 ? (row[numberIdx] || '').trim() : ''
         const hymnNumber = numStr ? parseInt(numStr, 10) : null
 
         parsedValid.push({
-          number: Number.isFinite(hymnNumber) ? hymnNumber : null,
+          number: hymnNumber != null && !Number.isNaN(hymnNumber) ? hymnNumber : null,
           title,
           lyrics,
-          category: category || null,
-          composer: composer || null,
-          meter: meter || null,
+          category: (categoryIdx !== -1 ? row[categoryIdx] : '')?.trim() || null,
+          composer: (composerIdx !== -1 ? row[composerIdx] : '')?.trim() || null,
+          meter: (meterIdx !== -1 ? row[meterIdx] : '')?.trim() || null,
+          language: (languageIdx !== -1 ? row[languageIdx] : '')?.trim() || 'English',
+          tags: parseTags((tagsIdx !== -1 ? row[tagsIdx] : '') || ''),
+          audio_url: (audioIdx !== -1 ? row[audioIdx] : '')?.trim() || null,
+          offline_policy: normalizeOfflinePolicy((offlineIdx !== -1 ? row[offlineIdx] : '') || 'optional'),
+          status: normalizeStatus((statusIdx !== -1 ? row[statusIdx] : '') || 'published'),
         })
-      })
+      }
 
       setValidRows(parsedValid)
       setErrors(parsedErrors)
 
-      if (parsedValid.length > 0) {
-        toast.success(`Found ${parsedValid.length} valid hymn(s) ready to import`)
-      }
+      if (parsedValid.length > 0) toast.success(`Found ${parsedValid.length} valid hymn(s) ready to import`)
+      if (parsedErrors.length > 0) toast.warning(`${parsedErrors.length} row(s) need attention`)
     }
-    reader.onerror = () => {
-      toast.error('Failed to read file')
-    }
+    reader.onerror = () => toast.error('Failed to read file')
     reader.readAsText(file)
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileProcess(e.dataTransfer.files[0])
-    }
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileProcess(e.dataTransfer.files[0])
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) handleFileProcess(e.target.files[0])
   }
 
   const handleReset = () => {
@@ -208,24 +268,26 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         title: row.title,
         number: row.number,
         lyrics: row.lyrics,
-        audio_url: null,
-        public_domain: true,
-        hymn_category: row.category,
         category: row.category,
-        meter: row.meter,
         composer: row.composer,
-        status: 'published' as const,
+        meter: row.meter,
+        language: row.language || 'English',
+        tags: row.tags,
+        audio_url: row.audio_url,
+        offline_policy: row.offline_policy,
+        status: row.status,
       })) as unknown as Array<ContentDraft<HymnRecord> & { status?: any }>
 
-      const res = bulkCreateContent('hymn', drafts, actor)
+      const res = await bulkCreateContent('hymn', drafts, actor)
 
       if (res.created.length > 0) {
-        toast.success(`Successfully imported ${res.created.length} hymn(s)!`)
+        const feedback = storageFeedback(res, `Imported ${res.created.length} hymn(s)`)
+        toast[feedback.level](feedback.message)
         onChanged?.()
         handleReset()
         onClose()
       } else {
-        toast.error('Failed to import hymns.')
+        toast.error('No hymns were imported. Review validation issues and try again.')
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error importing hymns')
@@ -236,128 +298,120 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg font-serif">
-            <Music2 className="w-5 h-5 text-primary" />
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="space-y-1.5">
+          <DialogTitle className="flex items-center gap-2 text-xl font-serif">
+            <Upload className="w-5 h-5 text-primary" />
             Bulk Upload Hymns
           </DialogTitle>
-          <p className="text-xs text-muted-foreground">
-            Upload multiple hymns at once into the digital hymnbook using a CSV file.
+          <p className="text-sm text-muted-foreground">
+            Import hymns in bulk with complete metadata and lyrics. Use the template to ensure all fields map correctly.
           </p>
         </DialogHeader>
 
-        <div className="space-y-4 my-2">
-          {/* Download Template */}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-3.5 flex items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-primary flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-primary" /> Download Hymns CSV Template
-                </span>
-                <p className="text-[11px] text-muted-foreground">
-                  Includes columns: <strong>number</strong>, <strong>title</strong>, <strong>lyrics</strong>, <strong>category</strong>, <strong>composer</strong>, and <strong>meter</strong>.
+        <div className="space-y-4 my-1">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Card className="border-primary/15 bg-primary/5">
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center gap-2 text-primary">
+                  <FileText className="w-4 h-4" />
+                  <span className="text-sm font-semibold">1. Download template</span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Includes all hymn fields: <span className="font-medium text-foreground">number, title, lyrics, category, composer, meter, language, tags, audio_url, offline_policy, status</span>.
                 </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadTemplate}
-                className="shrink-0 h-8 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-              >
-                <Download className="w-3.5 h-3.5" /> Download Template
-              </Button>
-            </CardContent>
-          </Card>
+                <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="h-8 text-xs gap-1.5">
+                  <Download className="w-3.5 h-3.5" /> Download CSV template
+                </Button>
+              </CardContent>
+            </Card>
+            <Card className="border-border/60">
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center gap-2 text-primary">
+                  <Info className="w-4 h-4" />
+                  <span className="text-sm font-semibold">Field guide</span>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-1 leading-relaxed">
+                  <li><strong>Required:</strong> title, lyrics (supports multiline verses)</li>
+                  <li><strong>Tags:</strong> separate with <code>;</code> or <code>|</code></li>
+                  <li><strong>offline_policy:</strong> online_only, optional, essential</li>
+                  <li><strong>status:</strong> draft or published; audio_url optional</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
 
-          {/* Upload Area */}
           {!fileName ? (
             <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragOver(true)
-              }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                dragOver
-                  ? 'border-primary bg-primary/10 scale-[1.01]'
-                  : 'border-border hover:border-primary/50 hover:bg-secondary/30'
+              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+                dragOver ? 'border-primary bg-primary/10 scale-[1.01]' : 'border-border hover:border-primary/50 hover:bg-secondary/30'
               }`}
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => e.target.files?.[0] && handleFileProcess(e.target.files[0])}
-                className="hidden"
-              />
-              <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm font-semibold text-primary">Click to select or drag and drop your Hymns CSV</p>
-              <p className="text-xs text-muted-foreground mt-1">Supports multiline hymn lyrics and stanzas</p>
+              <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="hidden" />
+              <div className="w-12 h-12 rounded-xl bg-secondary/60 flex items-center justify-center mx-auto mb-3">
+                <Upload className="w-6 h-6 text-primary" />
+              </div>
+              <p className="text-sm font-semibold text-primary">Upload completed CSV</p>
+              <p className="text-xs text-muted-foreground mt-1">Click to browse or drag and drop. Quoted multiline lyrics are supported.</p>
             </div>
           ) : (
-            <div className="p-3 rounded-xl bg-secondary/40 border border-border/60 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Music2 className="w-5 h-5 text-primary" />
-                <div>
-                  <p className="text-xs font-bold text-primary">{fileName}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {validRows.length} valid hymns found {errors.length > 0 && `• ${errors.length} issue(s)`}
-                  </p>
+            <div className="p-3.5 rounded-xl bg-secondary/40 border border-border/60 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-primary truncate">{fileName}</p>
+                  <p className="text-xs text-muted-foreground">{validRows.length} ready to import{errors.length > 0 ? ` • ${errors.length} issue(s)` : ' • all rows valid'}</p>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={handleReset} className="h-7 w-7 p-0 text-muted-foreground">
-                <X className="w-4 h-4" />
-              </Button>
+              <Button variant="ghost" size="sm" onClick={handleReset} className="h-8 w-8 p-0 text-muted-foreground shrink-0"><X className="w-4 h-4" /></Button>
             </div>
           )}
 
-          {/* Error messages */}
           {errors.length > 0 && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
-              <span className="text-xs font-bold flex items-center gap-1 text-amber-800">
-                <AlertCircle className="w-3.5 h-3.5" /> Validation Warnings ({errors.length})
-              </span>
-              <div className="max-h-24 overflow-y-auto space-y-0.5 text-[11px] text-amber-700">
-                {errors.map((err, i) => (
-                  <p key={i}>
-                    <strong>Row {err.rowNumber}:</strong> {err.message}
-                  </p>
-                ))}
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
+              <span className="text-xs font-bold flex items-center gap-1.5 text-amber-800"><AlertCircle className="w-4 h-4" /> Validation issues ({errors.length})</span>
+              <div className="max-h-28 overflow-y-auto space-y-1 text-xs text-amber-800/90">
+                {errors.map((err, i) => (<p key={i}><strong>Row {err.rowNumber}:</strong> {err.message}</p>))}
               </div>
             </div>
           )}
 
-          {/* Preview */}
           {validRows.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Preview Hymns to Import ({validRows.length})
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Import preview ({validRows.length})
                 </span>
+                <span className="text-[11px] text-muted-foreground">Full metadata included</span>
               </div>
-              <div className="max-h-56 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-card">
+              <div className="max-h-64 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 bg-card">
                 {validRows.map((row, idx) => (
-                  <div key={idx} className="p-2.5 flex items-start justify-between gap-3 text-xs hover:bg-secondary/20">
-                    <div className="space-y-0.5 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {row.number && (
-                          <Badge variant="outline" className="text-[10px] font-mono py-0 px-1.5">
-                            #{row.number}
-                          </Badge>
-                        )}
-                        <span className="font-semibold text-primary truncate">{row.title}</span>
+                  <div key={idx} className="p-3 flex items-start justify-between gap-3 text-xs hover:bg-secondary/20">
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {row.number != null && <Badge variant="outline" className="text-[10px] font-mono py-0 px-1.5 bg-secondary/60">#{row.number}</Badge>}
+                        <span className="font-semibold text-primary">{row.title}</span>
+                        <Badge variant={row.status === 'published' ? 'default' : 'secondary'} className="text-[10px] py-0 px-1.5 capitalize">{row.status}</Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground truncate">{row.lyrics.slice(0, 70)}…</p>
+                      <p className="text-[11px] text-muted-foreground line-clamp-2 whitespace-pre-line">{row.lyrics.split('\n')[0]}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {row.language && <Badge variant="outline" className="text-[10px] py-0">{row.language}</Badge>}
+                        {row.meter && <Badge variant="outline" className="text-[10px] py-0">{row.meter}</Badge>}
+                        <Badge variant="outline" className="text-[10px] py-0">{row.offline_policy.replace('_', ' ')}</Badge>
+                        {row.tags.slice(0, 3).map((t) => <Badge key={t} variant="secondary" className="text-[10px] py-0">{t}</Badge>)}
+                      </div>
                     </div>
-                    {row.category && (
-                      <Badge variant="secondary" className="text-[10px] py-0 px-1.5 shrink-0">
-                        {row.category}
-                      </Badge>
-                    )}
+                    <div className="text-right shrink-0 space-y-1 max-w-[40%]">
+                      {row.category && <Badge variant="secondary" className="text-[10px] py-0 px-1.5"><Music2 className="w-2.5 h-2.5 mr-1 inline" />{row.category}</Badge>}
+                      {row.composer && <p className="text-[10px] text-muted-foreground">{row.composer}</p>}
+                      {row.audio_url && <p className="text-[10px] text-emerald-700">Audio linked</p>}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -365,25 +419,10 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={importing}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleImport}
-            disabled={validRows.length === 0 || importing}
-            className="gap-1.5 bg-primary text-primary-foreground"
-          >
-            {importing ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Importing...
-              </>
-            ) : (
-              <>
-                <Upload className="w-3.5 h-3.5" /> Import {validRows.length} Hymns
-              </>
-            )}
+        <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border/40">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={importing}>Cancel</Button>
+          <Button size="sm" onClick={handleImport} disabled={validRows.length === 0 || importing} className="gap-1.5 bg-primary text-primary-foreground min-w-[160px]">
+            {importing ? (<><Loader2 className="w-3.5 h-3.5 animate-spin" /> Importing...</>) : (<><Upload className="w-3.5 h-3.5" /> Import {validRows.length} hymn{validRows.length === 1 ? '' : 's'}</>)}
           </Button>
         </DialogFooter>
       </DialogContent>

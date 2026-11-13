@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { listContent, isScheduled, setStatus, deleteContent, type ContentSort } from '@/lib/contentAdmin'
+import { storageFeedback } from '@/lib/contentAdmin'
 import {
   ContentTypeMeta,
   type AnyContentRecord,
@@ -187,34 +188,35 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
 
   // --- Row actions ---------------------------------------------------------
 
-  const transition = (row: AnyContentRecord, target: ContentStatus, success: string, opts: { scheduledFor?: string } = {}) => {
-    const res = setStatus(type, row.id, target, actor, opts)
+  const transition = async (row: AnyContentRecord, target: ContentStatus, success: string, opts: { scheduledFor?: string } = {}) => {
+    const res = await setStatus(type, row.id, target, actor, opts)
     if (!res.ok) {
       toast.error(res.errors[0] || 'Could not change status')
       return
     }
-    toast.success(success)
-    void refresh()
+    const feedback = storageFeedback(res, success)
+    toast[feedback.level](feedback.message)
+    await refresh()
   }
 
   const handlePublish = (row: AnyContentRecord) => {
     if (!guard('content:publish', 'Your role cannot publish content')) return
-    transition(row, 'published', 'Published — now live')
+    void transition(row, 'published', 'Published — now live')
   }
 
   const handleUnpublish = (row: AnyContentRecord) => {
     if (!guard('content:publish', 'Your role cannot unpublish content')) return
-    transition(row, 'draft', 'Moved back to draft')
+    void transition(row, 'draft', 'Moved back to draft')
   }
 
   const handleArchive = (row: AnyContentRecord) => {
     if (!guard('content:archive', 'Your role cannot archive content')) return
-    transition(row, 'archived', 'Archived')
+    void transition(row, 'archived', 'Archived')
   }
 
   const handleRestore = (row: AnyContentRecord) => {
     if (!guard('content:archive', 'Your role cannot restore content')) return
-    transition(row, 'draft', 'Restored to draft')
+    void transition(row, 'draft', 'Restored to draft')
   }
 
   const openSchedule = (row: AnyContentRecord) => {
@@ -223,7 +225,7 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
     setScheduleValue('')
   }
 
-  const confirmSchedule = () => {
+  const confirmSchedule = async () => {
     if (!scheduleRow) return
     const ms = Date.parse(scheduleValue)
     if (!Number.isFinite(ms)) {
@@ -236,21 +238,22 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
     }
     const row = scheduleRow
     setScheduleRow(null)
-    transition(row, 'published', `Scheduled for ${new Date(ms).toLocaleString()}`, {
+    await transition(row, 'published', `Scheduled for ${new Date(ms).toLocaleString()}`, {
       scheduledFor: new Date(ms).toISOString(),
     })
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteRow) return
-    const res = deleteContent(type, deleteRow.id, actor)
+    const res = await deleteContent(type, deleteRow.id, actor)
     setDeleteRow(null)
     if (!res.ok) {
       toast.error(res.errors[0] || 'Could not delete')
       return
     }
-    toast.success('Deleted permanently')
-    void refresh()
+    const feedback = storageFeedback(res, 'Deleted permanently')
+    toast[feedback.level](feedback.message)
+    await refresh()
   }
 
   const openEdit = (row: AnyContentRecord) => {

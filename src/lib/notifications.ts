@@ -1,11 +1,11 @@
-/**
- * Daily Reminder Notification System (Phase 3 — Stage 4)
+﻿/**
+ * Daily Reminder Notification System (Phase 3 â€” Stage 4)
  *
  * Client-side scheduling: the reminder fires from an interval plus app
  * lifecycle events (visibilitychange / focus / online), so it triggers as soon
  * as the app is opened after the scheduled time (at most ~60s late while the
  * app stays open). Truly silent background delivery while the app is fully
- * closed requires a Web Push server + push subscription storage — out of scope.
+ * closed requires a Web Push server + push subscription storage â€” out of scope.
  *
  * Reminder preferences (enabled / time / timezone / lastNotifiedDate) live in
  * the shared `daily_reminder_prefs_v1` store owned by `@/data/readingPlans`.
@@ -17,10 +17,10 @@ import { getDailyReminderPrefs, saveDailyReminderPrefs } from '@/data/readingPla
 const REMINDER_TITLE = 'Daily Word & Prayer'
 const REMINDER_TAG = 'daily-reminder'
 const REMINDER_MESSAGES = [
-  '“Your word is a lamp to my feet and a light to my path.” — Psalm 119:105',
-  '“Cast all your anxiety on Him, because He cares for you.” — 1 Peter 5:7',
-  'Time for prayer & today’s Word — may the Lord strengthen and guide you today.',
-  '“Be still, and know that I am God.” — Psalms 46:10',
+  'â€œYour word is a lamp to my feet and a light to my path.â€ â€” Psalm 119:105',
+  'â€œCast all your anxiety on Him, because He cares for you.â€ â€” 1 Peter 5:7',
+  'Time for prayer & todayâ€™s Word â€” may the Lord strengthen and guide you today.',
+  'â€œBe still, and know that I am God.â€ â€” Psalms 46:10',
 ]
 
 /** Safe even when the browser has no Notification API (SSR-free guard). */
@@ -64,8 +64,8 @@ export async function showLocalNotification(
 ): Promise<void> {
   const swOptions = {
     body,
-    icon: '/icon-192.svg',
-    badge: '/icon-192.svg',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     data: { url: opts?.url ?? '/' },
     tag: opts?.tag,
   }
@@ -80,7 +80,7 @@ export async function showLocalNotification(
   } catch { /* fall through to constructor / toast fallbacks */ }
   try {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/icon-192.svg' })
+      new Notification(title, { body, icon: '/icon-192.png' })
       return
     }
   } catch { /* fall through to toast fallback */ }
@@ -136,7 +136,7 @@ export function checkAndFireDailyReminder(now: Date = new Date()): boolean {
 let schedulerActive = false
 
 /**
- * Starts the reminder scheduler (idempotent — repeated calls return a no-op).
+ * Starts the reminder scheduler (idempotent â€” repeated calls return a no-op).
  * Checks immediately, then every 60s and on visibilitychange/focus/online.
  * Returns a cleanup function that stops the interval and event listeners.
  */
@@ -167,3 +167,4 @@ export function initDailyReminderScheduler(): () => void {
     document.removeEventListener('visibilitychange', onVisibilityChange)
   }
 }
+

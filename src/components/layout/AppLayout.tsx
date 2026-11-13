@@ -9,10 +9,8 @@ import {
   RefreshCw,
   LayoutDashboard,
   Library,
-  Compass,
   NotebookPen,
   Bell,
-  Users,
   UserRound,
   ShieldCheck,
   MoreHorizontal,
@@ -95,10 +93,8 @@ export function AppLayout() {
   const moreItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Library, label: 'E-Library', path: '/library' },
-    { icon: Compass, label: 'Faith Guide', path: '/faithguide' },
     { icon: NotebookPen, label: 'Journal', path: '/journal' },
     { icon: Bell, label: 'Prayer & News', path: '/prayer-news' },
-    { icon: Users, label: 'Community', path: '/community' },
     { icon: UserRound, label: 'Profile', path: '/profile' },
     ...(isAdmin ? [{ icon: ShieldCheck, label: 'Admin CMS', path: '/admin' }] : []),
   ];
@@ -125,7 +121,7 @@ export function AppLayout() {
       {/* Safe Service Worker Update Banner */}
       {updateAvailable && (
         <div className="bg-primary text-primary-foreground px-4 py-2 text-xs flex items-center justify-between gap-2 z-50 shrink-0">
-          <span>A new version of Believers Library is ready.</span>
+          <span>A new version of Believers e-Library is ready.</span>
           <button
             onClick={applyServiceWorkerUpdate}
             className="px-2.5 py-1 rounded-md bg-accent text-accent-foreground font-bold text-[11px] flex items-center gap-1"
@@ -137,9 +133,9 @@ export function AppLayout() {
 
       {/* App bar — in-flow header (replaces the old floating brand badge that covered page titles) */}
       <header className="shrink-0 z-40 flex items-center gap-2.5 px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 bg-background/85 backdrop-blur-md border-b border-border/40">
-        <NavLink to="/" className="flex items-center gap-2.5 min-w-0" aria-label="Believers Library Home">
+        <NavLink to="/" className="flex items-center gap-2.5 min-w-0" aria-label="Believers e-Library Home">
           <AppIcon className="h-8 w-8 shrink-0" />
-          <span className="font-serif font-bold text-primary truncate">Believers Library</span>
+          <span className="font-serif font-bold text-primary truncate">Believers e-Library</span>
         </NavLink>
 
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
@@ -147,8 +143,8 @@ export function AppLayout() {
             <button
               onClick={handleInstallPwa}
               className="p-2 rounded-full bg-accent text-accent-foreground border border-border"
-              title="Install Believers Library App"
-              aria-label="Install Believers Library App"
+              title="Install Believers e-Library App"
+              aria-label="Install Believers e-Library App"
             >
               <Download className="w-4 h-4" />
             </button>

@@ -48,14 +48,30 @@ export function PrayerAlertsNews() {
   const [reminderEnabled, setReminderEnabled] = useState(() => getDailyReminderPrefs().enabled)
 
   useEffect(() => {
-    setAlerts(getPrayerAlerts())
-    setNews(getNewsItems())
-    setBookmarks(getUserStats().bookmarks)
-    syncFaithDataFromServer().then((synced) => {
-      setAlerts(synced.prayerAlerts)
-      setNews(synced.newsItems)
-      setBookmarks(synced.bookmarks)
-    })
+    const refresh = async () => {
+      setAlerts(getPrayerAlerts())
+      setNews(getNewsItems())
+      setBookmarks(getUserStats().bookmarks)
+      try {
+        const synced = await syncFaithDataFromServer()
+        setAlerts(synced.prayerAlerts)
+        setNews(synced.newsItems)
+        setBookmarks(synced.bookmarks)
+      } catch {
+        // Keep local cached data visible if sync fails/offline.
+      }
+    }
+
+    void refresh()
+    const onChange = () => { void refresh() }
+    window.addEventListener('storage', onChange)
+    window.addEventListener('cms:content-changed', onChange as EventListener)
+    window.addEventListener('online', onChange)
+    return () => {
+      window.removeEventListener('storage', onChange)
+      window.removeEventListener('cms:content-changed', onChange as EventListener)
+      window.removeEventListener('online', onChange)
+    }
   }, [])
 
   const handlePray = (id: string) => {

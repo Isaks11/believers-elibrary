@@ -10,7 +10,8 @@ const STORAGE_KEYS = {
   prayerInteractions: 'faith_prayer_interactions',
   news: 'faith_news_items_v2',
   stats: 'faith_user_stats_v2',
-}
+  deletedNews: 'faith_deleted_news_ids_v1',
+} as const
 
 export const initialLibraryItems: LibraryItem[] = [
   {
@@ -359,12 +360,34 @@ export function savePrayerAlerts(alerts: PrayerAlert[]): void {
   }
 }
 
+function getDeletedNewsIds(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.deletedNews)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(String) : []
+  } catch {
+    return []
+  }
+}
+
+function saveDeletedNewsIds(ids: string[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.deletedNews, JSON.stringify(Array.from(new Set(ids))))
+  } catch { /* ignore */ }
+}
+
+export function markNewsDeleted(id: string): void {
+  saveDeletedNewsIds([...getDeletedNewsIds(), id])
+}
+
 export function getNewsItems(): NewsItem[] {
-  return getFromStorage(STORAGE_KEYS.news, initialNewsItems)
+  const deleted = new Set(getDeletedNewsIds())
+  return getFromStorage(STORAGE_KEYS.news, initialNewsItems).filter((n) => !deleted.has(n.id))
 }
 
 export function saveNewsItems(items: NewsItem[]): void {
-  setToStorage(STORAGE_KEYS.news, items)
+  const deleted = new Set(getDeletedNewsIds())
+  setToStorage(STORAGE_KEYS.news, items.filter((n) => !deleted.has(n.id)))
 }
 
 export function getUserStats(): UserStats {
@@ -494,8 +517,8 @@ export async function syncFaithDataFromServer(): Promise<{
       saveLibraryItems(Array.from(byId.values()))
     }
 
-    if (!alertRes.error && alertRes.data && alertRes.data.length > 0) {
-      const remoteAlerts: PrayerAlert[] = alertRes.data.map((r: Record<string, unknown>) => ({
+    if (!alertRes.error && alertRes.data) {
+      const remoteAlerts: PrayerAlert[] = (alertRes.data as Array<Record<string, unknown>>).map((r) => ({
         id: String(r.id),
         title: String(r.title ?? ''),
         description: String(r.description ?? ''),
@@ -507,15 +530,23 @@ export async function syncFaithDataFromServer(): Promise<{
         reminderEnabled: false,
         submittedBy: String(r.submitted_by ?? 'Admin'),
       }))
-      const localAlerts = getPrayerAlerts()
-      const byId = new Map<string, PrayerAlert>()
-      localAlerts.forEach((a) => byId.set(a.id, a))
-      remoteAlerts.forEach((a) => byId.set(a.id, { ...a, ...byId.get(a.id) }))
-      savePrayerAlerts(Array.from(byId.values()))
+      const localAlerts = getFromStorage(STORAGE_KEYS.prayers, initialPrayerAlerts)
+      const localById = new Map(localAlerts.map((a) => [a.id, a]))
+      // Prefer server-side content/status for shared alerts; preserve local user interaction state.
+      const merged = remoteAlerts.map((remote) => {
+        const local = localById.get(remote.id)
+        return {
+          ...remote,
+          prayerCount: local?.prayerCount ?? remote.prayerCount,
+          userPrayed: local?.userPrayed ?? remote.userPrayed,
+          reminderEnabled: local?.reminderEnabled ?? remote.reminderEnabled,
+        }
+      })
+      setToStorage(STORAGE_KEYS.prayers, merged)
     }
 
-    if (!newsRes.error && newsRes.data && newsRes.data.length > 0) {
-      const remoteNews: NewsItem[] = newsRes.data.map((r: Record<string, unknown>) => ({
+    if (!newsRes.error && newsRes.data) {
+      const remoteNews: NewsItem[] = (newsRes.data as Array<Record<string, unknown>>).map((r) => ({
         id: String(r.id),
         title: String(r.title ?? ''),
         excerpt: String(r.excerpt ?? ''),
@@ -525,11 +556,12 @@ export async function syncFaithDataFromServer(): Promise<{
         readTime: Number(r.read_time ?? 2),
         author: String(r.author ?? 'Admin'),
       }))
-      const localNews = getNewsItems()
+      const deleted = new Set(getDeletedNewsIds())
+      const localNews = getFromStorage(STORAGE_KEYS.news, initialNewsItems).filter((n) => !deleted.has(n.id))
       const byId = new Map<string, NewsItem>()
       localNews.forEach((n) => byId.set(n.id, n))
-      remoteNews.forEach((n) => byId.set(n.id, { ...byId.get(n.id), ...n }))
-      saveNewsItems(Array.from(byId.values()))
+      remoteNews.forEach((n) => { if (!deleted.has(n.id)) byId.set(n.id, { ...byId.get(n.id), ...n }) })
+      setToStorage(STORAGE_KEYS.news, Array.from(byId.values()).sort((a, b) => (b.publishDate || '').localeCompare(a.publishDate || '')))
     }
 
     if (uid) {

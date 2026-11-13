@@ -37,6 +37,8 @@ type AuthContextType = {
   isLoading: boolean;
   /** True when the session is backed by Supabase (server) rather than device-local-only. */
   isRemote: boolean;
+  /** True when Supabase redirected back with a password recovery session. */
+  isPasswordRecovery: boolean;
   login: (
     name: string,
     isGuest: boolean,
@@ -45,6 +47,8 @@ type AuthContextType = {
     mode?: 'signin' | 'signup'
   ) => Promise<LoginResult>;
   resetPassword: (email: string, localNewPassword?: string) => Promise<LoginResult>;
+  updatePassword: (newPassword: string) => Promise<LoginResult>;
+  clearPasswordRecovery: () => void;
   updateProfile: (patch: { name?: string; role?: UserRole }) => Promise<LoginResult>;
   logout: () => Promise<void>;
 };
@@ -145,8 +149,9 @@ function demoAdminConfig(): DemoAdminConfig | null {
   const rawEnabled = (import.meta.env.VITE_DEMO_ADMIN_ENABLED as string | undefined)
     ?.trim()
     .toLowerCase();
-  // Enabled by default unless explicitly set to 'false'
-  const enabled = rawEnabled ? rawEnabled !== 'false' : true;
+  // Opt-in by default in development; production builds require an explicit
+  // VITE_DEMO_ADMIN_ENABLED=true (and should generally leave it disabled).
+  const enabled = rawEnabled ? rawEnabled === 'true' : import.meta.env.DEV;
   if (!enabled) return null;
 
   const email = (
@@ -208,6 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRemote, setIsRemote] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   // --- Session bootstrap ---------------------------------------------------
   useEffect(() => {
@@ -266,7 +272,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           /* offline or not configured — fall through to local */
         }
 
-        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+          if (event === 'PASSWORD_RECOVERY') {
+            setIsPasswordRecovery(true);
+          }
           setTimeout(async () => {
             if (cancelled) return;
             if (!session?.user) return;
@@ -502,10 +511,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isSupabaseConfigured && supabase) {
       try {
         const { error } = await supabase.auth.resetPasswordForEmail(normalized, {
-          redirectTo: `${window.location.origin}/auth`,
+          redirectTo: `${window.location.origin}/auth/reset-password`,
         });
         if (error) return { ok: false, message: error.message };
-        return { ok: true, message: 'Password reset instructions sent to your email.' };
+        return { ok: true, message: 'Password reset instructions sent to your email. Open the link to set a new password.' };
       } catch {
         return { ok: false, message: 'Failed to send reset email. Check your network connection.' };
       }
@@ -520,8 +529,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, message: 'Please enter a new password (at least 6 characters).' };
     }
     updateRegisteredUserPassword(normalized, localNewPassword);
-    return { ok: true, message: 'Local password updated! You can now sign in.' };
+    return { ok: true, message: 'Password updated successfully. You can now sign in.' };
   }, []);
+
+  const updatePassword = useCallback(async (newPassword: string): Promise<LoginResult> => {
+    if (!newPassword || newPassword.length < 6) {
+      return { ok: false, message: 'New password must be at least 6 characters.' };
+    }
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) return { ok: false, message: error.message };
+        setIsPasswordRecovery(false);
+        return { ok: true, message: 'Password updated successfully.' };
+      } catch {
+        return { ok: false, message: 'Could not update password. Please try again.' };
+      }
+    }
+    return { ok: false, message: 'Password update is not available in local mode.' };
+  }, []);
+
+  const clearPasswordRecovery = useCallback(() => setIsPasswordRecovery(false), []);
 
   const updateProfile = useCallback(
     async (patch: { name?: string; role?: UserRole }): Promise<LoginResult> => {
@@ -568,7 +596,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isRemote, login, resetPassword, updateProfile, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isRemote, isPasswordRecovery, login, resetPassword, updatePassword, clearPasswordRecovery, updateProfile, logout }}>
       {children}
     </AuthContext.Provider>
   );

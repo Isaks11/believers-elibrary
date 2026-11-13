@@ -23,7 +23,7 @@ import {
   getBookmarkedDevotionalIds, getCompletedDevotionalMap,
   saveBookmarkedDevotionalIds, saveCompletedDevotionalMap,
 } from '@/data/mockDevotionalHymnData'
-import { cmsDevotionalToPageDevotional, loadPublishedDevotionals } from '@/lib/contentSource'
+import { cmsDevotionalToPageDevotional, loadAllPublishedDevotionals, loadPublishedDevotionals } from '@/lib/contentSource'
 import { loadPublishedReadingPlans, cmsPlanToPagePlan } from '@/lib/contentSource'
 import { computeStreak } from '@/lib/activity'
 import { addJournalEntry, getJournalEntries, updateJournalEntry } from '@/data/journalData'
@@ -63,18 +63,25 @@ export function Devotional() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      const rows = await loadPublishedDevotionals()
-      const planRows = await loadPublishedReadingPlans()
-      if (!cancelled) {
-        setCmsDevotionals(rows.map(cmsDevotionalToPageDevotional))
-        setCmsPlans(planRows.map(cmsPlanToPagePlan))
-        setDevotionals(getDevotionals())
-      }
+      const [rows, allRows, planRows] = await Promise.all([
+        loadPublishedDevotionals(),
+        loadAllPublishedDevotionals(),
+        loadPublishedReadingPlans(),
+      ])
+      if (cancelled) return
+      const local = getDevotionals()
+      const publishedAll = allRows.map(cmsDevotionalToPageDevotional)
+      const byId = new Map(local.map((d) => [d.id, d]))
+      publishedAll.forEach((d) => {
+        if (!byId.has(d.id)) byId.set(d.id, d)
+      })
+      setCmsDevotionals(rows.map(cmsDevotionalToPageDevotional))
+      setCmsPlans(planRows.map(cmsPlanToPagePlan))
+      setDevotionals(Array.from(byId.values()))
     }
     void load()
 
     const handleContentChange = () => {
-      setDevotionals(getDevotionals())
       void load()
     }
     window.addEventListener('cms:content-changed', handleContentChange)
@@ -87,16 +94,30 @@ export function Devotional() {
     }
   }, [year, month, selectedDay])
 
-  const yearMatches = DEVOTIONAL_YEARS.includes(year) ? year : DEVOTIONAL_YEARS[DEVOTIONAL_YEARS.length - 1]
+  const availableYears = useMemo(() => {
+    const years = new Set<number>([new Date().getFullYear()])
+    devotionals.forEach((d) => {
+      if (Number.isFinite(d.year)) years.add(d.year)
+    })
+    return Array.from(years).sort((a, b) => a - b)
+  }, [devotionals])
+
+  const yearMatches = availableYears.includes(year) ? year : (availableYears[availableYears.length - 1] ?? new Date().getFullYear())
+
+  useEffect(() => {
+    if (!availableYears.includes(year) && availableYears.length > 0) {
+      setYear(availableYears[availableYears.length - 1])
+    }
+  }, [availableYears, year])
 
   const monthEntries = useMemo(() => {
     const entries: Record<number, { entry?: DevotionalEntry }> = {}
-    const daysInMonth = new Date(year, MONTHS.indexOf(month) + 1, 0).getDate()
+    const daysInMonth = new Date(yearMatches, MONTHS.indexOf(month) + 1, 0).getDate()
     for (let d = 1; d <= daysInMonth; d += 1) {
       entries[d] = { entry: devotionals.find(e => e.year === yearMatches && e.month === month && e.day === d) }
     }
     return entries
-  }, [devotionals, year, yearMatches, month])
+  }, [devotionals, yearMatches, month])
 
   const completedCount = Object.values(monthEntries).filter(({ entry }) => entry?.isCompleted).length
   const totalCompletedAllTime = useMemo(() => devotionals.filter(d => d.isCompleted), [devotionals])
@@ -115,13 +136,13 @@ export function Devotional() {
 
   const openTodayDevotional = () => {
     const now = new Date()
-    const targetYear = DEVOTIONAL_YEARS.includes(now.getFullYear())
-      ? now.getFullYear()
-      : DEVOTIONAL_YEARS[DEVOTIONAL_YEARS.length - 1]
     const todayMonth = MONTHS[now.getMonth()]
     const todayDay = now.getDate()
-    const todayEntry = devotionals.find(e => e.year === targetYear && e.month === todayMonth && e.day === todayDay) || cmsDevotionals[0]
+    const todayEntry = devotionals.find(e => e.year === now.getFullYear() && e.month === todayMonth && e.day === todayDay)
+      || devotionals.find(e => e.month === todayMonth && e.day === todayDay)
+      || cmsDevotionals[0]
 
+    const targetYear = todayEntry?.year ?? now.getFullYear()
     setYear(targetYear)
     setMonth(todayMonth)
     if (todayEntry) {
@@ -174,7 +195,7 @@ export function Devotional() {
         // otherwise show a one-off confirmation that reminders are active.
         if (!checkAndFireDailyReminder()) {
           void showLocalNotification(
-            'Believers Library Daily Reminder',
+            'Believers e-Library Daily Reminder',
             `Daily devotional reminder set for ${updated.time} (${updated.timezone}).`,
             { tag: 'daily-reminder-confirm', url: '/devotional' }
           )
@@ -311,24 +332,26 @@ export function Devotional() {
             <ChevronRight className="w-4 h-4" />
           </Button>
 
-          {/* Year Selector */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5" /> Year
-            </span>
-            {DEVOTIONAL_YEARS.map(y => (
-              <button
-                key={y}
-                onClick={() => setYear(y)}
-                className={cn(
-                  'px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95',
-                  year === y ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-secondary/40 text-primary hover:bg-secondary/60'
-                )}
-              >
-                {y}
-              </button>
-            ))}
-          </div>
+          {/* Year Selector (only years with available devotionals) */}
+          {availableYears.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5" /> Year
+              </span>
+              {availableYears.map(y => (
+                <button
+                  key={y}
+                  onClick={() => setYear(y)}
+                  className={cn(
+                    'px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95',
+                    yearMatches === y ? 'bg-primary text-primary-foreground shadow-lg' : 'bg-secondary/40 text-primary hover:bg-secondary/60'
+                  )}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Month Scroller */}
           <div className="flex overflow-x-auto gap-2 no-scrollbar pb-2 -mx-4 px-4">

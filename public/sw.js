@@ -1,5 +1,5 @@
-/**
- * Believers e-Library — Offline-First Service Worker (Phase 3 — Stage 2)
+﻿/**
+ * Believers e-Library â€” Offline-First Service Worker (Phase 3 â€” Stage 2)
  *
  * Cache Versioning & Privacy Strategy:
  * - SHELL_CACHE: static app shell & hashed Vite assets (`believers-library-shell-v4`)
@@ -7,24 +7,26 @@
  * - STRICT PRIVACY RULE: Never cache authenticated requests, Supabase REST/Auth endpoints,
  *   private user journals, prayer requests, or any non-GET request in shared Cache Storage.
  *
- * Notifications (Phase 3 — Stage 4):
+ * Notifications (Phase 3 â€” Stage 4):
  * - `notificationclick`: closes the notification, focuses an existing matching
  *   client window, or opens the target URL in a new window.
  * - `push`: defensively parses the push payload (JSON with title/body/url,
  *   falling back to plain text) and shows a local notification.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const SHELL_CACHE = `believers-library-shell-${CACHE_VERSION}`;
 const SCRIPTURE_CACHE = `believers-library-scripture-${CACHE_VERSION}`;
-const ALLOWED_CACHES = [SHELL_CACHE, SCRIPTURE_CACHE];
+const RUNTIME_CACHE = `believers-library-runtime-${CACHE_VERSION}`;
+const ALLOWED_CACHES = [SHELL_CACHE, SCRIPTURE_CACHE, RUNTIME_CACHE];
 
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icon-192.svg',
-  '/icon-512.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/brand-logo.png',
 ];
 
 function isPrivateOrAuthenticatedRequest(request) {
@@ -111,7 +113,7 @@ self.addEventListener('push', (event) => {
       url = String(payload.url || url);
     }
   } catch {
-    // Not JSON — fall back to the raw text payload
+    // Not JSON â€” fall back to the raw text payload
     if (event.data) {
       body = event.data.text();
     }
@@ -120,8 +122,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/icon-192.svg',
-      badge: '/icon-192.svg',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
       data: { url },
     })
   );
@@ -171,13 +173,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Same-origin static assets (JS, CSS, SVG, fonts): stale-while-revalidate
+  // 3. Same-origin static assets (JS, CSS, SVG, fonts, images): stale-while-revalidate
   if (url.origin === self.location.origin) {
     event.respondWith(
       caches.match(request).then((cached) => {
         const networkFetch = fetch(request)
           .then((response) => {
-            if (response && response.status === 200 && response.type === 'basic') {
+            if (response && (response.status === 200 || response.status === 206) && (response.type === 'basic' || response.type === 'cors')) {
               const copy = response.clone();
               caches.open(SHELL_CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
             }
@@ -188,5 +190,26 @@ self.addEventListener('fetch', (event) => {
         return cached || networkFetch;
       })
     );
+    return;
+  }
+
+  // 4. Cross-origin images and static media used in the app (backgrounds/thumbnails):
+  // cache-first for offline availability, with background refresh when online.
+  if (request.destination === 'image' || /\.(png|jpe?g|gif|webp|svg|avif)(\?|$)/i.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const networkFetch = fetch(request)
+          .then((response) => {
+            if (response && (response.status === 200 || response.type === 'opaque')) {
+              const copy = response.clone();
+              caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+            }
+            return response;
+          })
+          .catch(() => cached);
+        return cached || networkFetch;
+      })
+    );
   }
 });
+
