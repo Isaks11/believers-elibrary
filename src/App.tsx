@@ -6,7 +6,9 @@ import { initDailyReminderScheduler } from '@/lib/notifications';
 import { can } from '@/lib/permissions';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { syncFaithDataFromServer } from '@/data/mockFaithData';
-import { loadAllPublishedDevotionals, loadPublishedHymns, loadPublishedReadingPlans, loadPublishedVideos, loadPublishedFaithResources } from '@/lib/contentSource';
+import { syncPersonalJournalFromServer } from '@/data/journalData';
+import { loadAllPublishedDevotionals, loadPublishedHymns, loadPublishedReadingPlans, loadPublishedVideos, loadPublishedFaithResources, loadDailyVerse } from '@/lib/contentSource';
+import { loadDonationSettings } from '@/lib/donationSettings';
 import { Home } from '@/pages/Home';
 import { Auth } from '@/pages/Auth';
 import { ForgotPassword } from '@/pages/ForgotPassword';
@@ -85,6 +87,8 @@ function ContentSync() {
       preloadImages();
       if (!navigator.onLine) return;
       try {
+        // After first successful connection, persist key server content locally
+        // so the app can work offline with cached data.
         await Promise.allSettled([
           loadAllPublishedDevotionals(),
           loadPublishedHymns(),
@@ -92,6 +96,9 @@ function ContentSync() {
           loadPublishedVideos(),
           loadPublishedFaithResources(),
           syncFaithDataFromServer(),
+          syncPersonalJournalFromServer(),
+          loadDailyVerse(),
+          loadDonationSettings(),
         ]);
       } catch {
         // Local cached content remains available offline.

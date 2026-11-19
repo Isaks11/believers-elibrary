@@ -691,6 +691,18 @@ export async function listContent<K extends ContentEntityType>(
       return local && updatedTs(local) > updatedTs(row) ? local : row;
     });
 
+    // Persist fetched server content locally so it remains available offline
+    // after the first successful connection/sync.
+    try {
+      const storeById = new Map(readLocalRecords(type).map((row) => [row.id, row as AnyContentRecord]));
+      for (const row of merged) {
+        storeById.set(row.id, row as AnyContentRecord);
+      }
+      writeLocalRecords(type, Array.from(storeById.values()) as AnyContentRecord[]);
+    } catch {
+      /* offline cache persistence is best-effort */
+    }
+
     // Rows waiting in the retry outbox (failed cloud writes) are not on the
     // server yet. Device-local sessions (demo/guest) are authoritative for
     // this browser, so their rows are merged too. Without this, a queued
@@ -745,8 +757,13 @@ export async function getContent<K extends ContentEntityType>(
     clearSyncFailure(CMS_SCOPE);
     const serverRow = data as ContentRecordMap[K] | null;
     if (!serverRow) return local ?? null;
-    if (local && updatedTs(local) > updatedTs(serverRow)) return local;
-    return serverRow;
+    const resolved = local && updatedTs(local) > updatedTs(serverRow) ? local : serverRow;
+    try {
+      const storeById = new Map(readLocalRecords(type).map((row) => [row.id, row as AnyContentRecord]));
+      storeById.set(resolved.id, resolved as AnyContentRecord);
+      writeLocalRecords(type, Array.from(storeById.values()) as AnyContentRecord[]);
+    } catch { /* best-effort */ }
+    return resolved;
   } catch (err) {
     recordSyncFailure(CMS_SCOPE, err instanceof Error ? err.message : 'network unavailable');
     return local ?? null;
@@ -776,8 +793,13 @@ export async function getContentBySlug<K extends ContentEntityType>(
     clearSyncFailure(CMS_SCOPE);
     const serverRow = data as ContentRecordMap[K] | null;
     if (!serverRow) return local ?? null;
-    if (local && updatedTs(local) > updatedTs(serverRow)) return local;
-    return serverRow;
+    const resolved = local && updatedTs(local) > updatedTs(serverRow) ? local : serverRow;
+    try {
+      const storeById = new Map(readLocalRecords(type).map((row) => [row.id, row as AnyContentRecord]));
+      storeById.set(resolved.id, resolved as AnyContentRecord);
+      writeLocalRecords(type, Array.from(storeById.values()) as AnyContentRecord[]);
+    } catch { /* best-effort */ }
+    return resolved;
   } catch (err) {
     recordSyncFailure(CMS_SCOPE, err instanceof Error ? err.message : 'network unavailable');
     return local ?? null;
