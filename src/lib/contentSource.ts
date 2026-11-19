@@ -280,6 +280,8 @@ export function cmsDevotionalToPageDevotional(record: DevotionalRecord): Devotio
   const completedMap = getCompletedDevotionalMap()
   const bookmarked = new Set(getBookmarkedDevotionalIds())
 
+  const manualPrayer = typeof record.prayer === 'string' ? record.prayer.trim() : ''
+
   return {
     id,
     ...parts,
@@ -288,8 +290,8 @@ export function cmsDevotionalToPageDevotional(record: DevotionalRecord): Devotio
     scriptureRef: record.verse_ref,
     bibleVersions: record.verse_text ? { KJV: record.verse_text } : {},
     mainBody: body,
-    keyThought: paragraphs[0] ?? body,
-    prayer: '',
+    keyThought: '',
+    prayer: manualPrayer,
     prayerPoints: [],
     author: (record.author && record.author.trim()) || 'Church Library',
     readTimeMinutes: Math.max(1, Math.round(wordCount / 200)),

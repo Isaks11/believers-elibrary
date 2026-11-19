@@ -1,4 +1,4 @@
-/**
+﻿/**
  * CSV Parser and Template Generator for Devotionals Bulk Upload
  *
  * Implements a standards-compliant RFC 4180 CSV parser that supports
@@ -13,6 +13,7 @@ export interface ParsedDevotionalRow {
   verse_ref: string;
   verse_text: string | null;
   body: string;
+  prayer: string | null;
   translation: string | null;
   category: string | null;
   tags: string[];
@@ -94,10 +95,11 @@ export function parseCsvToGrid(text: string): string[][] {
 function normalizeHeader(h: string): string {
   const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (clean === 'date' || clean === 'devotionaldate') return 'devotional_date';
-  if (clean === 'verseref' || clean === 'scriptureref' || clean === 'reference' || clean === 'scripture') return 'verse_ref';
-  if (clean === 'versetext' || clean === 'scripturetext' || clean === 'verse') return 'verse_text';
+  if (clean === 'verseref' || clean === 'scriptureref' || clean === 'reference' || clean === 'scripture' || clean === 'scripturereference' || clean === 'biblereference' || clean === 'versereference') return 'verse_ref';
+  if (clean === 'versetext' || clean === 'scripturetext' || clean === 'verse' || clean === 'scripturepassage' || clean === 'versequotation' || clean === 'bibletext') return 'verse_text';
   if (clean === 'theme' || clean === 'topic' || clean === 'category') return 'category';
   if (clean === 'content' || clean === 'reading' || clean === 'mainbody' || clean === 'devotionalbody') return 'body';
+  if (clean === 'prayer' || clean === 'closingprayer' || clean === 'todaysprayer' || clean === 'devotionalprayer') return 'prayer';
   if (clean === 'bibleversion' || clean === 'version' || clean === 'translation') return 'translation';
   if (clean === 'tag' || clean === 'tags' || clean === 'keywords') return 'tags';
   if (clean === 'license' || clean === 'licence' || clean === 'attribution' || clean === 'licenseattribution') return 'license_attribution';
@@ -137,6 +139,7 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
   const verseRefIdx = headers.indexOf('verse_ref');
   const verseTextIdx = headers.indexOf('verse_text');
   const bodyIdx = headers.indexOf('body');
+  const prayerIdx = headers.indexOf('prayer');
   const translationIdx = headers.indexOf('translation');
   const categoryIdx = headers.indexOf('category');
   const tagsIdx = headers.indexOf('tags');
@@ -152,7 +155,7 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
         {
           rowNumber: 1,
           message:
-            'Missing required columns. CSV must include: date (or devotional_date), title, verse_ref, and body. Optional: verse_text, translation, category, tags, author, license_attribution, offline_policy, status.',
+            'Missing required columns. CSV must include: date (or devotional_date), title, verse_ref, and body. Optional: verse_text, prayer, translation, category, tags, author, license_attribution, offline_policy, status.',
         },
       ],
       totalRows: 0,
@@ -170,6 +173,7 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
     const verseRef = (verseRefIdx !== -1 ? row[verseRefIdx] : '') || '';
     const verseText = (verseTextIdx !== -1 ? row[verseTextIdx] : '') || null;
     const body = (row[bodyIdx] || '').trim();
+    const prayer = (prayerIdx !== -1 ? row[prayerIdx] : '') || null;
     const translation = (translationIdx !== -1 ? row[translationIdx] : '') || null;
     const category = (categoryIdx !== -1 ? row[categoryIdx] : '') || null;
     const tagsRaw = (tagsIdx !== -1 ? row[tagsIdx] : '') || '';
@@ -228,6 +232,7 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
         verse_ref: verseRef.trim(),
         verse_text: verseText ? verseText.trim() : null,
         body,
+        prayer: prayer ? prayer.trim() : null,
         translation: translation ? translation.trim() : null,
         category: category ? category.trim() : null,
         tags: parseTags(tagsRaw),
@@ -268,6 +273,7 @@ export function generateDevotionalsTemplateCsv(): string {
       'verse_ref',
       'verse_text',
       'body',
+      'prayer',
       'translation',
       'category',
       'tags',
@@ -281,12 +287,13 @@ export function generateDevotionalsTemplateCsv(): string {
       'Walking in Divine Purpose',
       'Jeremiah 29:11',
       'For I know the thoughts that I think toward you, saith the LORD, thoughts of peace, and not of evil, to give you an expected end.',
-      'In our walk with God, there are moments where the path ahead seems obscured by clouds of uncertainty.\n\nBut Scripture reminds us: God’s plans are intentional. He is the Great Architect of our lives. When you feel stalled, preparation often looks like waiting.\n\nChoose today to trust His divine timing and stay committed to prayer and devotion.',
+      'In our walk with God, there are moments where the path ahead seems obscured by clouds of uncertainty.\n\nBut Scripture reminds us that God’s plans are intentional. When you feel stalled, preparation often looks like waiting.\n\nChoose today to trust His divine timing and stay committed to prayer and devotion.',
+      'Lord, thank You for Your plans and purpose for my life. Help me to trust Your timing, walk in obedience, and rest in Your promises today. Amen.',
       'KJV',
       'Purpose & Calling',
       'purpose; trust; guidance',
       'Rev. Daniel Mensah',
-      '© Believers e-Library / Ministry content',
+      'Believers e-Library / Ministry content',
       'optional',
       'published',
     ],
@@ -296,6 +303,7 @@ export function generateDevotionalsTemplateCsv(): string {
       'Psalm 23:1-3',
       'The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul.',
       'The image of the Shepherd is one of the most tender pictures of God in Scripture. A shepherd leads from the front and knows each sheep by name.\n\nGreen pastures and still waters speak of provision and peace found by staying near the Shepherd. Rest in His care today.',
+      'Good Shepherd, thank You for guiding and restoring my soul. Lead me in Your paths today and help me to follow Your voice with peace and confidence. Amen.',
       'KJV',
       'Guidance & Care',
       'shepherd; peace; provision',
@@ -310,6 +318,7 @@ export function generateDevotionalsTemplateCsv(): string {
       'Isaiah 41:10',
       'Fear thou not; for I am with thee: be not dismayed; for I am thy God: I will strengthen thee; yea, I will help thee.',
       'Fear is a persistent weapon, but faith is our shield. When challenges rise, remember that you do not stand in your own strength.\n\nGod has promised to uphold you with His righteous right hand. Rest securely in His promise today.',
+      'Father God, when fear rises, remind me that You are with me. Strengthen my heart, calm my mind, and help me to trust You in every situation. Amen.',
       'KJV',
       'Faith & Victory',
       'faith; courage; strength',

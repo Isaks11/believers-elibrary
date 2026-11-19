@@ -64,6 +64,8 @@ export interface DevotionalRecord extends BaseContentRecord {
   translation: string | null;
   /** YYYY-MM-DD the devotional is intended for (null = evergreen). */
   devotional_date: string | null;
+  /** Manually written closing prayer for the devotional. */
+  prayer?: string | null;
 }
 
 export interface ReadingPlanRecord extends BaseContentRecord {

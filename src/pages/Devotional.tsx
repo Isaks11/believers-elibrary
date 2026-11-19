@@ -879,20 +879,24 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
               <p key={i}>{para}</p>
             ))}
           </div>
-          <div className="rounded-xl bg-primary/5 border border-primary/10 p-4 space-y-2">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Key Thought</p>
-              <p className="text-sm italic font-serif text-primary leading-relaxed">{entry.keyThought}</p>
+          {(entry.keyThought?.trim() || entry.prayer?.trim()) && (
+            <div className="rounded-xl bg-primary/5 border border-primary/10 p-4 space-y-3">
+              {entry.keyThought?.trim() && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Key Thought</p>
+                  <p className="text-sm italic font-serif text-primary leading-relaxed">{entry.keyThought}</p>
+                </div>
+              )}
+              {entry.prayer?.trim() && (
+                <div className={entry.keyThought?.trim() ? "pt-2 border-t border-primary/10" : ""}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 flex items-center gap-1 mb-1">
+                    <Heart className="w-3 h-3" /> Prayer
+                  </p>
+                  <p className="text-sm text-foreground/80 leading-relaxed italic whitespace-pre-line">{entry.prayer}</p>
+                </div>
+              )}
             </div>
-            <div className="pt-2 border-t border-primary/10">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 flex items-center gap-1 mb-1">
-                <Compass className="w-3 h-3" /> Today’s Application
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Pause before your next task today to meditate on <strong>{entry.scriptureRef}</strong> and practice <em>{entry.theme.toLowerCase()}</em> in one concrete interaction.
-              </p>
-            </div>
-          </div>
+          )}
         </section>
 
         {/* Tabs: Reflection / Prayer */}
@@ -916,16 +920,21 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
             </Button>
           </TabsContent>
           <TabsContent value="prayer" className="pt-4 space-y-4">
-            {/* CMS devotionals carry no prayer text — hide the empty box
-                (seeded entries always have a prayer, so they render as before). */}
-            {entry.prayer && (
+            {entry.prayer ? (
               <div className="rounded-xl bg-primary/5 border border-primary/10 p-4">
                 <h4 className="font-bold text-primary mb-1.5">Today's Prayer</h4>
-                <p className="text-foreground/80 leading-relaxed italic text-sm">{entry.prayer}</p>
+                <p className="text-foreground/80 leading-relaxed italic text-sm whitespace-pre-line">{entry.prayer}</p>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-secondary/30 border border-border/40 text-sm text-muted-foreground">
+                No prayer has been added for this devotional yet.
               </div>
             )}
             <div className="space-y-2">
               <h5 className="text-xs font-bold text-accent uppercase tracking-widest flex items-center gap-1"><Heart className="w-3.5 h-3.5" /> Prayer Points</h5>
+              {entry.prayerPoints.length === 0 && (
+                <p className="text-xs text-muted-foreground">No prayer points listed.</p>
+              )}
               {entry.prayerPoints.map((point, i) => (
                 <button
                   key={i}

@@ -62,6 +62,7 @@ type FormState = {
   verse_ref: string
   translation: string
   devotional_date: string
+  prayer: string
   description: string
   days: string
   structure: PlanStep[]
@@ -150,6 +151,7 @@ function emptyForm(): FormState {
     verse_ref: '',
     translation: '',
     devotional_date: '',
+    prayer: '',
     description: '',
     days: '7',
     structure: [],
@@ -189,6 +191,7 @@ function formFromRecord(record: AnyContentRecord | null): FormState {
     verse_ref: asString(row.verse_ref),
     translation: asString(row.translation),
     devotional_date: asString(row.devotional_date),
+    prayer: asString(row.prayer),
     description: asString(row.description),
     days: asNumberString(row.days) || '7',
     structure: Array.isArray(row.structure) ? (row.structure as PlanStep[]) : [],
@@ -240,6 +243,7 @@ function buildDraft(type: ContentEntityType, form: FormState): Record<string, un
         verse_ref: form.verse_ref.trim(),
         translation: form.translation.trim() || null,
         devotional_date: form.devotional_date || null,
+        prayer: form.prayer.trim() || null,
       }
     case 'reading_plan':
       return {
@@ -607,6 +611,17 @@ export function ContentEditorDialog({
                     />
                     <span className="text-[10px] text-muted-foreground">The date this devotional will display for users.</span>
                   </div>
+                </div>
+
+                <div>
+                  <FieldLabel>Prayer (manual)</FieldLabel>
+                  <Textarea
+                    value={form.prayer}
+                    onChange={(e) => set('prayer', e.target.value)}
+                    placeholder="Write the closing prayer for this devotional..."
+                    className="min-h-[90px]"
+                  />
+                  <span className="text-[10px] text-muted-foreground">This prayer will be shown to users in the devotional prayer section.</span>
                 </div>
               </>
             )}

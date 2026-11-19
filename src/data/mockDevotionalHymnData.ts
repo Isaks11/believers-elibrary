@@ -272,6 +272,7 @@ function loadCmsDevotionals(): DevotionalEntry[] {
       const paragraphs = body.split(/\n\s*\n/).map((p: string) => p.trim()).filter(Boolean)
       const wordCount = body.split(/\s+/).filter(Boolean).length
 
+      const manualPrayer = typeof record.prayer === 'string' ? record.prayer.trim() : ''
       return {
         id,
         year,
@@ -283,8 +284,8 @@ function loadCmsDevotionals(): DevotionalEntry[] {
         scriptureRef: record.verse_ref || '',
         bibleVersions: record.verse_text ? { KJV: record.verse_text } : {},
         mainBody: body,
-        keyThought: paragraphs[0] ?? body,
-        prayer: '',
+        keyThought: '',
+        prayer: manualPrayer,
         prayerPoints: [],
         author: (record.author && record.author.trim()) || 'Church Library',
         readTimeMinutes: Math.max(1, Math.round(wordCount / 200)),

@@ -114,6 +114,7 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
         body: row.body,
         verse_ref: row.verse_ref,
         verse_text: row.verse_text,
+        prayer: row.prayer || null,
         translation: row.translation || 'KJV',
         devotional_date: row.devotional_date,
         category: row.category,
@@ -165,7 +166,7 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Template includes required and optional fields with sample rows:
-                  <span className="font-medium text-foreground"> date, title, verse_ref, verse_text, body, translation, category, tags, author, license_attribution, offline_policy, status</span>.
+                  <span className="font-medium text-foreground"> date, title, verse_ref, verse_text, body, prayer, translation, category, tags, author, license_attribution, offline_policy, status</span>.
                 </p>
                 <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="h-8 text-xs gap-1.5">
                   <Download className="w-3.5 h-3.5" /> Download CSV template
@@ -180,6 +181,7 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
                 </div>
                 <ul className="text-xs text-muted-foreground space-y-1 leading-relaxed">
                   <li><strong>Required:</strong> date (YYYY-MM-DD), title, verse_ref, body</li>
+                  <li><strong>Manual prayer:</strong> use the <code>prayer</code> column to upload the devotional prayer</li>
                   <li><strong>Tags:</strong> separate with <code>;</code> or <code>|</code></li>
                   <li><strong>offline_policy:</strong> online_only, optional, or essential</li>
                   <li><strong>status:</strong> draft or published</li>
@@ -262,6 +264,7 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
                         </Badge>
                       </div>
                       <p className="text-[11px] text-muted-foreground line-clamp-2">{row.body}</p>
+                      {row.prayer && <p className="text-[11px] text-primary/80 line-clamp-1"><strong>Prayer:</strong> {row.prayer}</p>}
                       <div className="flex flex-wrap gap-1">
                         {row.translation && <Badge variant="outline" className="text-[10px] py-0">{row.translation}</Badge>}
                         {row.offline_policy && <Badge variant="outline" className="text-[10px] py-0">{row.offline_policy.replace('_', ' ')}</Badge>}
