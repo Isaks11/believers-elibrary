@@ -13,10 +13,12 @@ import {
   Music2,
   Library,
   ScrollText,
+  HeartHandshake,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { AppIcon } from '@/components/common/AppIcon';
+import { DonateDialog } from '@/components/common/DonateDialog';
 import { computeStreak, activeDaysThisWeek, countCompletedDevotionals } from '@/lib/activity';
 import { getDevotionals } from '@/data/mockDevotionalHymnData';
 import { cmsDevotionalToPageDevotional, loadAllPublishedDevotionals, loadDailyVerse } from '@/lib/contentSource';
@@ -38,6 +40,7 @@ export function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [cmsVerse, setCmsVerse] = useState<{ text: string; ref: string } | null>(null);
+  const [donateOpen, setDonateOpen] = useState(false);
 
   // Scripture of the day from the church CMS (memoized for 5 minutes in
   // contentSource). While it loads — and if there is none — the built-in
@@ -228,6 +231,26 @@ export function Home() {
         </Card>
       </div>
 
+      {/* Give / Support */}
+      <Card className="border-primary/15 bg-gradient-to-r from-primary/5 via-background to-emerald-500/5 shadow-sm">
+        <CardContent className="p-4 sm:p-5 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <HeartHandshake className="w-5 h-5" />
+            </div>
+            <div className="space-y-1 min-w-0">
+              <h3 className="font-semibold text-primary">Support the Ministry</h3>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                Give towards ministry outreach, discipleship resources, and app development. View account details and giving purpose.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" className="shrink-0" onClick={() => setDonateOpen(true)}>
+            Give
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Grid Sections */}
       <div className="grid grid-cols-2 gap-4 pb-4">
         {sections.map((section) => {
@@ -247,6 +270,8 @@ export function Home() {
           );
         })}
       </div>
+
+      <DonateDialog open={donateOpen} onOpenChange={setDonateOpen} />
     </div>
   );
 }

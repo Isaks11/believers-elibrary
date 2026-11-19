@@ -30,7 +30,9 @@ import {
   FileText,
   Trash2,
   Camera,
+  HeartHandshake,
 } from 'lucide-react';
+import { DonateDialog } from '@/components/common/DonateDialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -92,6 +94,7 @@ export function Profile() {
 
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDialog, setActiveDialog] = useState<'settings' | 'history' | 'bookmarks' | 'backup' | 'legal' | null>(null);
+  const [donateOpen, setDonateOpen] = useState(false);
   const [nameInput, setNameInput] = useState(user?.name || '');
   const [roleInput, setRoleInput] = useState<UserRole>(user?.role || 'user');
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
@@ -397,6 +400,12 @@ export function Profile() {
             label: 'Account Settings',
             count: isRemote ? 'Manage your account and preferences' : 'Manage your device settings and profile',
             onClick: openSettings,
+          },
+          {
+            icon: HeartHandshake,
+            label: 'Support / Give',
+            count: 'View giving purpose and account details',
+            onClick: () => setDonateOpen(true),
           },
           {
             icon: FileText,
@@ -820,6 +829,8 @@ export function Profile() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DonateDialog open={donateOpen} onOpenChange={setDonateOpen} />
     </div>
   );
 }

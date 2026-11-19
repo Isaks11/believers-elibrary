@@ -37,6 +37,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
+  HandHeart,
 } from 'lucide-react'
 import { getLibraryItems, getPrayerAlerts, getNewsItems, syncFaithDataFromServer } from '@/data/mockFaithData'
 import { getModerationReports } from '@/data/communityData'
@@ -59,6 +60,7 @@ import {
 } from '@/components/admin/LegacySections'
 import { UserRolePanel } from '@/components/admin/UserRolePanel'
 import { AuditLogView } from '@/components/admin/AuditLogView'
+import { DonationSettingsSection } from '@/components/admin/DonationSettingsSection'
 import { recordWriteOutcome, recordWriteError } from '@/lib/syncHealth'
 import { cn } from '@/lib/utils'
 
@@ -73,6 +75,7 @@ type SectionKey =
   | 'moderation'
   | 'users'
   | 'audit'
+  | 'giving'
 
 type SectionDef = {
   key: SectionKey
@@ -92,6 +95,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'prayers', label: 'Prayer Alerts', icon: Bell },
   { key: 'news', label: 'News', icon: Newspaper },
   { key: 'moderation', label: 'Moderation', icon: ShieldCheck },
+  { key: 'giving', label: 'Giving / Donations', icon: HandHeart, action: 'users:manage' },
   { key: 'users', label: 'Users & Roles', icon: Users, action: 'users:manage' },
   { key: 'audit', label: 'Audit Log', icon: ScrollText, action: 'audit:view' },
 ]
@@ -265,6 +269,8 @@ export function Admin() {
         return <NewsSection onChanged={refreshCounts} />
       case 'moderation':
         return <ModerationSection onChanged={refreshCounts} />
+      case 'giving':
+        return <DonationSettingsSection />
       case 'users':
         return <UserRolePanel />
       case 'audit':
