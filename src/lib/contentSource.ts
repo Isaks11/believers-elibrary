@@ -42,6 +42,7 @@ import type {
 import type { ReadingPlan, ReadingPlanDay } from '@/data/readingPlans'
 import type { LibraryItem } from '@/types/library-news'
 import { parseBibleRef } from '@/lib/bibleService'
+import { loadDailyVerseFromSettings } from '@/lib/dailyVerses'
 
 /** In-memory cache TTL — five minutes. */
 export const CONTENT_SOURCE_TTL_MS = 5 * 60 * 1000
@@ -233,11 +234,17 @@ export async function loadPublishedFaithResources(): Promise<FaithResourceRecord
 }
 
 /**
- * Newest published devotional that carries a scripture verse
- * (`verse_text` + `verse_ref`), or `null` when there is none / on error —
- * callers fall back to their built-in verse.
+ * Daily verse for display (Home/dashboard contexts).
+ * Prefers admin-managed daily verses (specific date or latest active), then
+ * falls back to the newest published devotional that carries a scripture verse.
  */
 export async function loadDailyVerse(): Promise<{ text: string; ref: string } | null> {
+  try {
+    const managed = await loadDailyVerseFromSettings()
+    if (managed) return managed
+  } catch {
+    // fall through to devotional-derived verse
+  }
   try {
     const rows = await loadPublishedRecords('devotional')
     let newest: { text: string; ref: string } | null = null

@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   Database,
   HandHeart,
+  BookMarked,
 } from 'lucide-react'
 import { getLibraryItems, getPrayerAlerts, getNewsItems, syncFaithDataFromServer } from '@/data/mockFaithData'
 import { getModerationReports } from '@/data/communityData'
@@ -61,6 +62,7 @@ import {
 import { UserRolePanel } from '@/components/admin/UserRolePanel'
 import { AuditLogView } from '@/components/admin/AuditLogView'
 import { DonationSettingsSection } from '@/components/admin/DonationSettingsSection'
+import { DailyVerseSection } from '@/components/admin/DailyVerseSection'
 import { recordWriteOutcome, recordWriteError } from '@/lib/syncHealth'
 import { cn } from '@/lib/utils'
 
@@ -76,6 +78,7 @@ type SectionKey =
   | 'users'
   | 'audit'
   | 'giving'
+  | 'daily_verses'
 
 type SectionDef = {
   key: SectionKey
@@ -87,6 +90,7 @@ type SectionDef = {
 
 const SECTIONS: SectionDef[] = [
   { key: 'devotional', label: 'Devotionals', icon: Sunrise },
+  { key: 'daily_verses', label: 'Daily Verses', icon: BookMarked },
   { key: 'reading_plan', label: 'Reading Plans', icon: CalendarRange },
   { key: 'hymn', label: 'Hymns', icon: Music2 },
   { key: 'video', label: 'Videos', icon: Video },
@@ -271,6 +275,8 @@ export function Admin() {
         return <ModerationSection onChanged={refreshCounts} />
       case 'giving':
         return <DonationSettingsSection />
+      case 'daily_verses':
+        return <DailyVerseSection />
       case 'users':
         return <UserRolePanel />
       case 'audit':

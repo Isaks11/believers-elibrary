@@ -9,14 +9,45 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   ChevronLeft, Calendar, CalendarDays, CheckCircle2,
-  Lock, Play, Pause, Square, Music2, Share2, Bookmark, BookmarkCheck, Type,
+  Lock, Play, Square, Music2, Share2, Bookmark, BookmarkCheck, Type,
   Heart, NotebookPen, Flame, Mic, BookOpen, Clock, GitBranch, Bell, Compass, ChevronRight
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   BIBLE_VERSIONS, BIBLE_VERSION_LABELS, MONTHS, DEVOTIONAL_YEARS
 } from '@/types/devotional-hymn'
+
+const DEVOTIONAL_HERO_IMAGES = [
+  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1400&q=80', // flowers
+  'https://images.unsplash.com/photo-1474511320723-9a56873867b5?auto=format&fit=crop&w=1400&q=80', // wildlife
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80', // ocean
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80', // sky
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1400&q=80', // nature
+  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1400&q=80', // forest
+]
+
+const DEVOTIONAL_FONT_STYLES = [
+  { id: 'serif', label: 'Serif', family: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif' },
+  { id: 'sans', label: 'Sans', family: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
+  { id: 'readable', label: 'Readable', family: '"Trebuchet MS", "Segoe UI", Verdana, sans-serif' },
+] as const
+
+type DevotionalFontStyleId = typeof DEVOTIONAL_FONT_STYLES[number]['id']
+
+function getDefaultDevotionalFontStyle(): DevotionalFontStyleId {
+  try {
+    const v = localStorage.getItem('devotional_font_style') as DevotionalFontStyleId | null
+    return DEVOTIONAL_FONT_STYLES.some((s) => s.id === v) ? (v as DevotionalFontStyleId) : 'serif'
+  } catch { return 'serif' }
+}
+function getDefaultDevotionalFontSize(): number {
+  try {
+    const n = Number(localStorage.getItem('devotional_font_size'))
+    return Number.isFinite(n) && n >= 14 && n <= 28 ? n : 17
+  } catch { return 17 }
+}
 import type { DevotionalEntry, BibleVersion } from '@/types/devotional-hymn'
 import {
   getDevotionals, updateDevotional,
@@ -661,10 +692,29 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
   const [version, setVersion] = useState<BibleVersion>('KJV')
   const [isPlaying, setIsPlaying] = useState(false)
   const [speechRate, setSpeechRate] = useState(1.0)
-  const [fontSize, setFontSize] = useState(17)
+  const [fontSize, setFontSize] = useState<number>(() => getDefaultDevotionalFontSize())
+  const [fontStyle, setFontStyle] = useState<DevotionalFontStyleId>(() => getDefaultDevotionalFontStyle())
+  const [heroIndex, setHeroIndex] = useState(0)
   const [reflection, setReflection] = useState('')
   const [prayersChecked, setPrayersChecked] = useState<boolean[]>(() => entry.prayerPoints.map(() => false))
   const [completedLocal, setCompletedLocal] = useState(entry.isCompleted ?? false)
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setHeroIndex((i) => (i + 1) % DEVOTIONAL_HERO_IMAGES.length)
+    }, 8000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('devotional_font_size', String(fontSize)) } catch {}
+  }, [fontSize])
+
+  useEffect(() => {
+    try { localStorage.setItem('devotional_font_style', fontStyle) } catch {}
+  }, [fontStyle])
+
+  const readingFontFamily = DEVOTIONAL_FONT_STYLES.find((s) => s.id === fontStyle)?.family || DEVOTIONAL_FONT_STYLES[0].family
 
   useEffect(() => {
     setVersion('KJV')
@@ -749,28 +799,36 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
       className="fixed inset-0 z-[60] bg-background overflow-y-auto"
     >
       {/* Hero */}
-      <div className="relative h-[36vh]">
-        <img
-          src="https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/devotional-cover-1-cb4ac9fc-1782601932817.webp"
-          className="w-full h-full object-cover"
-          alt="Devotional cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
+      <div className="relative h-[36vh] overflow-hidden bg-black">
+        <AnimatePresence mode="wait">
+          <motion.img
+            key={DEVOTIONAL_HERO_IMAGES[heroIndex]}
+            src={DEVOTIONAL_HERO_IMAGES[heroIndex]}
+            initial={{ opacity: 0.2, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0.25 }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
+            className="absolute inset-0 w-full h-full object-cover"
+            alt="Devotional nature background"
+          />
+        </AnimatePresence>
+        <div className="absolute inset-0 bg-black/25" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/55 to-black/10" />
         <Button
           variant="secondary"
           size="icon"
           onClick={onBack}
-          className="absolute top-6 left-6 rounded-full bg-white/20 backdrop-blur-md border-none text-white hover:bg-white/40"
+          className="absolute top-6 left-6 rounded-full bg-black/25 backdrop-blur-md border border-white/20 text-white hover:bg-black/40 z-10"
         >
           <ChevronLeft className="w-6 h-6" />
         </Button>
-        <div className="absolute bottom-6 left-6 right-6 space-y-2">
-          <div className="flex items-center gap-2">
-            <Badge className="bg-accent text-accent-foreground">{entry.month} {entry.day}, {entry.year}</Badge>
-            <Badge className="bg-white/20 text-white border-none">{entry.dayOfWeek}</Badge>
+        <div className="absolute bottom-6 left-6 right-6 space-y-2 z-10">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className="bg-accent text-accent-foreground shadow-sm">{entry.month} {entry.day}, {entry.year}</Badge>
+            <Badge className="bg-black/30 text-white border border-white/20 backdrop-blur-sm">{entry.dayOfWeek}</Badge>
           </div>
-          <h1 className="text-3xl font-serif text-primary font-bold leading-tight">{entry.title}</h1>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium">
+          <h1 className="text-3xl font-serif text-primary font-bold leading-tight drop-shadow-[0_1px_1px_rgba(255,255,255,0.35)]">{entry.title}</h1>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium flex-wrap">
             <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {entry.readTimeMinutes} min</span>
             <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" /> {entry.theme}</span>
             <span className="flex items-center gap-1"><GitBranch className="w-3.5 h-3.5" /> {entry.author}</span>
@@ -780,8 +838,8 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
 
       <div className="px-6 py-6 space-y-7 pb-32">
         {/* Quick actions */}
-        <div className="flex justify-between items-center py-2 border-y border-border/50">
-          <div className="flex gap-3">
+        <div className="flex justify-between items-center py-2 border-y border-border/50 gap-2">
+          <div className="flex gap-1 sm:gap-2 flex-wrap">
             <Button variant="ghost" size="icon" className={cn('text-muted-foreground', entry.isBookmarked && 'text-amber-500')} onClick={onToggleBookmark}>
               {entry.isBookmarked ? <BookmarkCheck className="w-5 h-5 fill-current" /> : <Bookmark className="w-5 h-5" />}
             </Button>
@@ -789,11 +847,44 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
               <CheckCircle2 className="w-5 h-5" />
             </Button>
             <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={share}><Share2 className="w-5 h-5" /></Button>
-            <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={() => setFontSize(f => (f === 17 ? 21 : 17))}>
-              <Type className="w-5 h-5" />
-            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Reading appearance">
+                  <Type className="w-5 h-5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 space-y-3" align="start">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider">Font style</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {DEVOTIONAL_FONT_STYLES.map((s) => (
+                      <Button
+                        key={s.id}
+                        type="button"
+                        size="sm"
+                        variant={fontStyle === s.id ? 'default' : 'outline'}
+                        className="h-8 text-xs"
+                        onClick={() => setFontStyle(s.id)}
+                        style={{ fontFamily: s.family }}
+                      >
+                        {s.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-primary uppercase tracking-wider">Font size</p>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-8 px-2" onClick={() => setFontSize((s) => Math.max(14, s - 1))}>A-</Button>
+                    <div className="flex-1 text-center text-sm font-medium text-foreground">{fontSize}px</div>
+                    <Button type="button" size="sm" variant="outline" className="h-8 px-2" onClick={() => setFontSize((s) => Math.min(28, s + 1))}>A+</Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Your font style and size are saved as default.</p>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <Button size="icon" variant="ghost" className={cn('w-8 h-8', isPlaying && 'text-rose-500')} onClick={toggleAudioNarration}>
               {isPlaying ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
             </Button>
@@ -874,7 +965,7 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
         {/* Reading */}
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-accent uppercase tracking-widest">Daily Reading</h3>
-          <div className="space-y-4 text-foreground/90 font-serif leading-relaxed" style={{ fontSize }}>
+          <div className="space-y-4 text-foreground/90 leading-relaxed" style={{ fontSize, fontFamily: readingFontFamily }}>
             {entry.mainBody.split(String.fromCharCode(10, 10)).map((para, i) => (
               <p key={i}>{para}</p>
             ))}

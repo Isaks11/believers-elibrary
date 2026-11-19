@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+﻿import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Flame,
   BookOpen,
-  Headphones,
   Heart,
   Trophy,
   TrendingUp,
@@ -18,12 +17,11 @@ import {
   Bell,
   Clock,
   Award,
-  Zap,
   PenLine,
   Target,
   Settings2,
 } from 'lucide-react'
-import { LibraryItem, UserStats, PrayerAlert } from '@/types/library-news'
+import type { LibraryItem, UserStats, PrayerAlert } from '@/types/library-news'
 import { getUserStats, getLibraryItems, getPrayerAlerts, syncFaithDataFromServer } from '@/data/mockFaithData'
 import {
   computeStreak,
@@ -34,555 +32,327 @@ import {
   countTotalPrayed,
   countTotalAnsweredPrayers,
   countReadingHistoryEntries,
+  type DayActivity,
 } from '@/lib/activity'
 import { getJournalEntries, syncPersonalJournalFromServer } from '@/data/journalData'
 import {
   getSpiritualGoals,
   saveSpiritualGoals,
-  SpiritualGoals,
+  type SpiritualGoals,
   READING_PLANS,
   getReadingPlansProgress,
 } from '@/data/readingPlans'
+import { getFavoriteHymnIds } from '@/data/mockDevotionalHymnData'
 import { useAuth } from '@/contexts/AuthContext'
-import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
+const HERO_IMAGES = [
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1474511320723-9a56873867b5?auto=format&fit=crop&w=1400&q=80',
+]
+
 export function UserDashboard() {
-  const { user } = useAuth()
   const navigate = useNavigate()
-  const [stats, setStats] = useState<UserStats | null>(() => getUserStats())
-  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(() => getLibraryItems())
-  const [prayerAlerts, setPrayerAlerts] = useState<PrayerAlert[]>(() => getPrayerAlerts())
+  const { user } = useAuth()
+  const [items, setItems] = useState<LibraryItem[]>(() => getLibraryItems())
+  const [stats, setStats] = useState<UserStats>(() => getUserStats())
+  const [prayers, setPrayers] = useState<PrayerAlert[]>(() => getPrayerAlerts())
+  const [weeklyActivity, setWeeklyActivity] = useState<DayActivity[]>(() => last7DayActivity())
+  const [weekSummary, setWeekSummary] = useState(() => activeDaysThisWeek())
+  const [streak, setStreak] = useState(() => computeStreak())
   const [goals, setGoals] = useState<SpiritualGoals>(() => getSpiritualGoals())
-  const [goalsModalOpen, setGoalsModalOpen] = useState(false)
-  const [refreshTick, setRefreshTick] = useState(0)
+  const [showGoals, setShowGoals] = useState(false)
+  const [editGoals, setEditGoals] = useState<SpiritualGoals>(() => getSpiritualGoals())
+  const [journalCount, setJournalCount] = useState(() => getJournalEntries().length)
+  const [hymnFavCount, setHymnFavCount] = useState(() => getFavoriteHymnIds().length)
+  const [heroIndex, setHeroIndex] = useState(0)
+  const [planProgress, setPlanProgress] = useState(() => getReadingPlansProgress())
 
   useEffect(() => {
-    setStats(getUserStats())
-    setLibraryItems(getLibraryItems())
-    setPrayerAlerts(getPrayerAlerts())
-    setGoals(getSpiritualGoals())
-
-    Promise.all([syncFaithDataFromServer(), syncPersonalJournalFromServer()]).then(([faithData]) => {
-      setLibraryItems(faithData.libraryItems)
-      setPrayerAlerts(faithData.prayerAlerts)
-      setStats(getUserStats())
-      setRefreshTick((t) => t + 1)
-    })
+    const id = window.setInterval(() => setHeroIndex((i) => (i + 1) % HERO_IMAGES.length), 8000)
+    return () => window.clearInterval(id)
   }, [])
 
-  // All figures below are derived from real recorded activity — never constants.
-  const streak = useMemo(() => computeStreak(), [refreshTick])
-  const completedDevotionals = useMemo(() => countCompletedDevotionals(), [refreshTick])
-  const journalCount = useMemo(() => countJournalEntries(), [refreshTick])
-  const chaptersRead = useMemo(() => countReadingHistoryEntries(), [refreshTick])
-  const week = useMemo(() => activeDaysThisWeek(), [refreshTick])
-  const weekActivity = useMemo(() => last7DayActivity(), [refreshTick])
-  const wroteAtNight = useMemo(
-    () =>
-      getJournalEntries().some((e) => {
-        const h = new Date(e.createdAt).getHours()
-        return h >= 22 || h < 5
-      }),
-    [refreshTick]
-  )
-
-  const lastBibleChapter = useMemo(() => {
-    try {
-      const raw = localStorage.getItem('bible_history')
-      const arr = raw ? JSON.parse(raw) : []
-      return Array.isArray(arr) && arr.length > 0 ? String(arr[0]) : null
-    } catch {
-      return null
+  useEffect(() => {
+    const refresh = () => {
+      setItems(getLibraryItems())
+      setStats(getUserStats())
+      setPrayers(getPrayerAlerts())
+      setWeeklyActivity(last7DayActivity())
+      setWeekSummary(activeDaysThisWeek())
+      setStreak(computeStreak())
+      setGoals(getSpiritualGoals())
+      setJournalCount(getJournalEntries().length)
+      setHymnFavCount(getFavoriteHymnIds().length)
+      setPlanProgress(getReadingPlansProgress())
     }
-  }, [refreshTick])
 
-  const planProgress = useMemo(() => getReadingPlansProgress(), [refreshTick])
+    refresh()
+    void syncFaithDataFromServer().then((synced) => {
+      setItems(synced.libraryItems || getLibraryItems())
+      setPrayers(synced.prayerAlerts || getPrayerAlerts())
+      setStats(getUserStats())
+    })
+    void syncPersonalJournalFromServer().then((synced) => {
+      setJournalCount((synced.entries || getJournalEntries()).length)
+    })
 
-  const prayedCount = useMemo(() => countTotalPrayed(), [prayerAlerts, refreshTick])
-  const answeredCount = useMemo(() => countTotalAnsweredPrayers(), [prayerAlerts, refreshTick])
-  const continueListening = libraryItems.filter(
-    (i) => (i.type === 'audio' || i.type === 'video') && (i.progress || 0) > 0
-  )
-  const continueReading = libraryItems.filter(
-    (i) => (i.type === 'book' || i.type === 'material') && (i.progress || 0) > 0
-  )
+    const onUpdate = () => refresh()
+    window.addEventListener('faith-data-updated', onUpdate)
+    window.addEventListener('journal-updated', onUpdate)
+    return () => {
+      window.removeEventListener('faith-data-updated', onUpdate)
+      window.removeEventListener('journal-updated', onUpdate)
+    }
+  }, [])
 
-  if (!stats)
-    return (
-      <div className="animate-pulse space-y-4">
-        <div className="h-32 bg-muted rounded-2xl" />
-        <div className="h-20 bg-muted rounded-2xl" />
-      </div>
-    )
+  const statsCards = useMemo(() => {
+    const booksRead = countReadingHistoryEntries()
+    const devotionalsDone = countCompletedDevotionals()
+    const prayersMade = countTotalPrayed()
+    const answered = countTotalAnsweredPrayers()
+    return [
+      { label: 'Books Read', value: booksRead, icon: BookOpen },
+      { label: 'Devotionals', value: devotionalsDone, icon: Star },
+      { label: 'Prayers Lifted', value: prayersMade, icon: Heart },
+      { label: 'Answered', value: answered, icon: Trophy },
+    ]
+  }, [stats])
 
-  const bookmarkedItems = libraryItems.filter((i) => stats.bookmarks.includes(i.id))
+  const bookmarkedItems = useMemo(() => items.filter(i => stats.bookmarks?.includes(i.id)).slice(0, 4), [items, stats.bookmarks])
+  const recentPrayers = useMemo(() => prayers.filter(p => p.status !== 'archived').slice(0, 3), [prayers])
+  const activeReadingPlans = useMemo(() => {
+    return READING_PLANS.map((plan) => ({ plan, progress: planProgress[plan.id] }))
+      .filter(({ progress }) => progress && Object.keys(progress.completedDays || {}).length > 0)
+      .slice(0, 3)
+  }, [planProgress])
 
-  const achievements = [
-    { label: '7-Day Streak', icon: Flame, earned: streak >= 7, color: 'text-orange-500 bg-orange-50' },
-    { label: 'First Prayer', icon: Heart, earned: prayedCount >= 1, color: 'text-rose-500 bg-rose-50' },
-    { label: 'Bookworm', icon: BookOpen, earned: completedDevotionals >= 5, color: 'text-blue-500 bg-blue-50' },
-    { label: 'Night Owl', icon: Clock, earned: wroteAtNight, color: 'text-indigo-500 bg-indigo-50' },
-    { label: 'Intercessor', icon: Bell, earned: prayedCount >= 3, color: 'text-emerald-500 bg-emerald-50' },
-  ]
+  const weeklyGoal = goals.weeklyDevotionalsTarget || 5
+  const weeklyProgressPct = Math.min(100, Math.round((weekSummary.active / Math.max(1, weeklyGoal)) * 100))
 
-  const quickLinks = [
-    { label: 'Bible Reading', icon: BookOpen, path: '/bible', color: 'text-blue-600 bg-blue-50' },
-    { label: 'Faith Guide', icon: Star, path: '/faithguide', color: 'text-purple-600 bg-purple-50' },
-    { label: 'Devotional', icon: Zap, path: '/devotional', color: 'text-amber-600 bg-amber-50' },
-    { label: 'Journal', icon: Heart, path: '/journal', color: 'text-rose-600 bg-rose-50' },
-  ]
+  const greeting = (() => {
+    const h = new Date().getHours()
+    if (h < 12) return 'Good Morning'
+    if (h < 17) return 'Good Afternoon'
+    return 'Good Evening'
+  })()
 
-  const handleSaveGoals = () => {
-    saveSpiritualGoals(goals)
-    setGoalsModalOpen(false)
-    toast.success('Spiritual growth goals saved!')
+  const saveGoals = () => {
+    const normalized: SpiritualGoals = {
+      ...editGoals,
+      weeklyDevotionalsTarget: Math.max(1, Math.min(7, Number(editGoals.weeklyDevotionalsTarget) || 1)),
+      weeklyChaptersTarget: Math.max(1, Math.min(50, Number(editGoals.weeklyChaptersTarget) || 1)),
+      weeklyPrayersTarget: Math.max(1, Math.min(50, Number(editGoals.weeklyPrayersTarget) || 1)),
+      focusTheme: String(editGoals.focusTheme || '').trim() || goals.focusTheme,
+    }
+    saveSpiritualGoals(normalized)
+    setGoals(normalized)
+    setShowGoals(false)
+    toast.success('Spiritual goals updated')
   }
 
   return (
-    <div className="space-y-6 pb-24">
-      <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-serif text-primary">My Journey</h1>
-          <p className="text-sm text-muted-foreground">Welcome back, {user?.name || 'Believer'}</p>
-        </div>
-        <button
-          onClick={() => navigate('/profile')}
-          className="w-10 h-10 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors flex items-center justify-center"
-          aria-label="Open Profile"
-        >
-          <Award className="w-5 h-5 text-primary" />
-        </button>
-      </header>
-
-      {/* Spiritual Streak Banner */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="bg-gradient-to-br from-primary via-indigo-700 to-emerald-700 text-white border-none shadow-xl overflow-hidden relative">
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-4 right-4 w-24 h-24 rounded-full bg-white/20 blur-2xl" />
-            <div className="absolute bottom-2 left-8 w-16 h-16 rounded-full bg-emerald-300/30 blur-xl" />
+    <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Image-rich hero with changing images */}
+      <Card className="overflow-hidden border-none shadow-xl relative min-h-[230px]">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={heroIndex}
+            initial={{ opacity: 0.25, scale: 1.03 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0.2 }}
+            transition={{ duration: 1.1 }}
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url('${HERO_IMAGES[heroIndex]}')` }}
+          />
+        </AnimatePresence>
+        <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/40 to-black/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
+        <CardContent className="relative z-10 p-6 sm:p-7 text-white space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1 min-w-0">
+              <Badge className="bg-white/20 text-white border-white/20 backdrop-blur-sm">Dashboard</Badge>
+              <h1 className="text-2xl sm:text-3xl font-serif font-bold leading-tight">{greeting}, {user?.name || 'Friend'}</h1>
+              <p className="text-sm text-white/85 leading-relaxed">Track your devotional consistency, prayers, reading, and spiritual growth.</p>
+            </div>
+            <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-2 rounded-full border border-white/20 shrink-0">
+              <Flame className="w-4 h-4 text-orange-300 fill-orange-300" />
+              <span className="text-sm font-bold">{streak}</span>
+              <span className="text-xs text-white/85">day streak</span>
+            </div>
           </div>
-          <CardContent className="p-5 relative z-10">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium opacity-80 uppercase tracking-wider">Faith Streak</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Flame className="w-7 h-7 text-amber-300 fill-amber-300" />
-                  <span className="text-3xl font-bold">{streak}</span>
-                  <span className="text-sm opacity-80">days</span>
-                </div>
-                <p className="text-xs opacity-70 mt-1">
-                  {streak > 0
-                    ? 'Keep growing in faith daily!'
-                    : 'Complete a devotional or write in your journal to start.'}
-                </p>
-              </div>
-              <div className="text-right space-y-2">
-                <div className="bg-white/15 rounded-lg px-3 py-1.5">
-                  <p className="text-[10px] opacity-80 uppercase">Prayed</p>
-                  <p className="text-lg font-bold">{prayedCount}</p>
-                </div>
-                <div className="bg-white/15 rounded-lg px-3 py-1.5">
-                  <p className="text-[10px] opacity-80 uppercase">Answered</p>
-                  <p className="text-lg font-bold">{answeredCount}</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
 
-      {/* Resume Bible Chapter Banner */}
-      {lastBibleChapter && (
-        <Card className="border-border/50 bg-secondary/40 shadow-sm">
-          <CardContent className="p-3.5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600">
-                <BookOpen className="w-4 h-4" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            {statsCards.map((s) => (
+              <div key={s.label} className="rounded-xl bg-white/12 backdrop-blur-sm border border-white/15 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <s.icon className="w-4 h-4 text-white/90" />
+                  <span className="text-[10px] uppercase tracking-wide text-white/80 font-semibold leading-tight">{s.label}</span>
+                </div>
+                <p className="text-xl font-bold">{s.value}</p>
               </div>
-              <div>
-                <p className="text-[10px] uppercase font-bold text-muted-foreground">Continue Scripture Study</p>
-                <p className="text-sm font-bold text-primary">{lastBibleChapter}</p>
-              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Weekly goal progress */}
+      <Card className="border-border/50 shadow-sm">
+        <CardContent className="p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-semibold text-primary flex items-center gap-2"><Target className="w-4 h-4" /> Weekly Devotional Goal</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{weekSummary.active} active day{weekSummary.active === 1 ? '' : 's'} in the last 7 days • Target: {weeklyGoal}/week</p>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">Focus: {goals.focusTheme}</p>
             </div>
-            <Button
-              size="sm"
-              className="h-8 text-xs font-bold"
-              onClick={() => {
-                const lastSpace = lastBibleChapter.lastIndexOf(' ')
-                if (lastSpace > 0) {
-                  localStorage.setItem(
-                    'bible_target_jump',
-                    JSON.stringify({
-                      book: lastBibleChapter.slice(0, lastSpace),
-                      chapter: Number(lastBibleChapter.slice(lastSpace + 1)) || 1,
-                    })
-                  )
-                }
-                navigate('/bible')
-              }}
-            >
-              Read Chapter →
+            <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => { setEditGoals(goals); setShowGoals(true) }}>
+              <Settings2 className="w-4 h-4" /> Goals
             </Button>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+          <div className="h-2.5 rounded-full bg-secondary/40 overflow-hidden">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${weeklyProgressPct}%` }} />
+          </div>
+          <div className="flex gap-1.5 justify-between">
+            {weeklyActivity.map((d) => (
+              <div key={d.key} className="flex flex-col items-center gap-1 flex-1">
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${d.count > 0 ? 'bg-emerald-500 text-white' : 'bg-secondary/40 text-muted-foreground'}`}>
+                  {d.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Personal Spiritual Goals & Milestones */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-border/50 shadow-sm">
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-primary uppercase flex items-center gap-1.5">
-                  <Target className="w-4 h-4 text-accent" /> Spiritual Goals & Milestones
-                </h3>
-                <p className="text-[11px] text-muted-foreground italic">“{goals.focusTheme}”</p>
-              </div>
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setGoalsModalOpen(true)}>
-                <Settings2 className="w-3.5 h-3.5" /> Edit
-              </Button>
+              <h3 className="font-semibold text-primary flex items-center gap-2"><Bookmark className="w-4 h-4" /> Bookmarked</h3>
+              <Button size="sm" variant="ghost" onClick={() => navigate('/library')}>View library</Button>
             </div>
-
-            <div className="space-y-2.5">
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-foreground">Devotionals Completed</span>
-                  <span className="font-bold text-primary">
-                    {completedDevotionals} / {goals.weeklyDevotionalsTarget}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-amber-500 rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round((completedDevotionals / Math.max(1, goals.weeklyDevotionalsTarget)) * 100)
-                      )}%`,
-                    }}
-                  />
-                </div>
+            {bookmarkedItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No bookmarks yet. Save books and resources from the library.</p>
+            ) : (
+              <div className="space-y-2">
+                {bookmarkedItems.map((item) => (
+                  <button key={item.id} className="w-full text-left p-3 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors" onClick={() => navigate('/library')}>
+                    <p className="text-sm font-medium text-foreground line-clamp-1">{item.title}</p>
+                    <p className="text-xs text-muted-foreground">{item.author} • {item.type}</p>
+                  </button>
+                ))}
               </div>
-
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-foreground">Bible Chapters Read</span>
-                  <span className="font-bold text-primary">
-                    {chaptersRead} / {goals.weeklyChaptersTarget}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round((chaptersRead / Math.max(1, goals.weeklyChaptersTarget)) * 100)
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-foreground">Prayers Lifted</span>
-                  <span className="font-bold text-primary">
-                    {prayedCount} / {goals.weeklyPrayersTarget}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-rose-500 rounded-full transition-all"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round((prayedCount / Math.max(1, goals.weeklyPrayersTarget)) * 100)
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Active Reading Plans quick progress */}
-            <div className="pt-2 border-t border-border/30 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                Active Reading Plans:{' '}
-                <strong className="text-primary">
-                  {READING_PLANS.filter((p) => Object.keys(planProgress[p.id]?.completedDays || {}).length > 0).length}{' '}
-                  started
-                </strong>
-              </span>
-              <button onClick={() => navigate('/devotional')} className="font-bold text-accent hover:underline">
-                Open Plans →
-              </button>
-            </div>
+            )}
           </CardContent>
         </Card>
-      </motion.div>
 
-      {/* Stats Grid */}
-      <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-        <div className="grid grid-cols-3 gap-3">
-          <Card
-            className="border-none shadow-sm bg-secondary/50 cursor-pointer hover:bg-secondary/70 transition-colors"
-            onClick={() => navigate('/devotional')}
-          >
-            <CardContent className="p-3 text-center space-y-1">
-              <BookOpen className="w-5 h-5 text-blue-600 mx-auto" />
-              <p className="text-lg font-bold text-primary">{completedDevotionals}</p>
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Devotionals</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="border-none shadow-sm bg-secondary/50 cursor-pointer hover:bg-secondary/70 transition-colors"
-            onClick={() => navigate('/journal')}
-          >
-            <CardContent className="p-3 text-center space-y-1">
-              <PenLine className="w-5 h-5 text-purple-600 mx-auto" />
-              <p className="text-lg font-bold text-primary">{journalCount}</p>
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Journal</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="border-none shadow-sm bg-secondary/50 cursor-pointer hover:bg-secondary/70 transition-colors"
-            onClick={() => navigate('/prayer-news')}
-          >
-            <CardContent className="p-3 text-center space-y-1">
-              <Heart className="w-5 h-5 text-rose-600 mx-auto" />
-              <p className="text-lg font-bold text-primary">{prayedCount}</p>
-              <p className="text-[10px] text-muted-foreground uppercase font-medium">Prayed</p>
-            </CardContent>
-          </Card>
-        </div>
-      </motion.div>
-
-      {/* Continue Listening */}
-      {continueListening.length > 0 && (
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }}>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-primary uppercase flex items-center gap-1.5">
-                <Headphones className="w-4 h-4" /> Continue Listening
-              </h3>
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-primary flex items-center gap-2"><Bell className="w-4 h-4" /> Prayer & News</h3>
+              <Button size="sm" variant="ghost" onClick={() => navigate('/prayer-news')}>Open</Button>
             </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
-              {continueListening.map((item) => (
-                <Card
-                  key={item.id}
-                  onClick={() => navigate('/library')}
-                  className="min-w-[200px] border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                >
-                  <CardContent className="p-3 space-y-2">
-                    <div className="w-full h-20 rounded-lg bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">
-                      <Headphones className="w-6 h-6 text-purple-600" />
-                    </div>
-                    <h4 className="text-xs font-bold text-primary line-clamp-1">{item.title}</h4>
-                    <p className="text-[10px] text-muted-foreground">{item.author}</p>
-                    <div className="h-1 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-purple-500 rounded-full" style={{ width: `${item.progress || 0}%` }} />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Continue Reading */}
-      {continueReading.length > 0 && (
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-primary uppercase flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4" /> Continue Reading
-              </h3>
-            </div>
-            <div className="space-y-2">
-              {continueReading.map((item) => (
-                <Card
-                  key={item.id}
-                  onClick={() => navigate('/library')}
-                  className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                >
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                      <BookOpen className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-primary truncate">{item.title}</h4>
-                      <p className="text-[10px] text-muted-foreground">{item.author}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 rounded-full" style={{ width: `${item.progress || 0}%` }} />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground font-medium">{item.progress || 0}%</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Bookmarks */}
-      {bookmarkedItems.length > 0 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.25 }}>
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold text-primary uppercase flex items-center gap-1.5">
-              <Bookmark className="w-4 h-4" /> My Bookmarks
-            </h3>
-            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4">
-              {bookmarkedItems.map((item) => (
-                <Badge
-                  key={item.id}
-                  onClick={() => navigate('/library')}
-                  variant="outline"
-                  className="whitespace-nowrap px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-primary/5"
-                >
-                  {item.title}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Quick Links */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-primary uppercase">Quick Access</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {quickLinks.map((link) => (
-              <Button
-                key={link.label}
-                variant="outline"
-                onClick={() => navigate(link.path)}
-                className="h-auto py-4 flex flex-col items-center gap-2 border-border/40 hover:border-primary/40 hover:bg-primary/5 transition-all"
-              >
-                <div className={cn('p-2.5 rounded-xl', link.color)}>
-                  <link.icon className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-semibold text-primary">{link.label}</span>
-              </Button>
-            ))}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Weekly Progress (real activity) */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
-        <Card className="border-none shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-primary uppercase flex items-center gap-1.5">
-                <TrendingUp className="w-4 h-4 text-emerald-600" /> Weekly Activity
-              </h3>
-              <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">
-                {week.active} of {week.total} days active
-              </Badge>
-            </div>
-            {week.active === 0 ? (
-              <p className="text-xs text-muted-foreground py-4 text-center">
-                No activity yet this week. Complete a devotional or write a journal entry to start your streak.
-              </p>
+            {recentPrayers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active prayer alerts right now.</p>
             ) : (
-              <div className="flex items-end gap-1.5 h-20">
-                {weekActivity.map((day, i) => (
-                  <div key={day.key} className="flex-1 flex flex-col items-center gap-1">
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: day.count > 0 ? '100%' : '8%' }}
-                      transition={{ delay: 0.4 + i * 0.05, duration: 0.4 }}
-                      className={cn('w-full rounded-t-sm', day.count > 0 ? 'bg-emerald-500' : 'bg-primary/10')}
-                    />
-                    <span className="text-[9px] text-muted-foreground">{day.label}</span>
+              <div className="space-y-2">
+                {recentPrayers.map((p) => (
+                  <div key={p.id} className="p-3 rounded-xl bg-secondary/20">
+                    <p className="text-sm font-medium text-foreground line-clamp-1">{p.title}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{p.description}</p>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
-      </motion.div>
 
-      {/* Achievements */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-primary uppercase flex items-center gap-1.5">
-            <Trophy className="w-4 h-4 text-amber-500" /> Achievements
-          </h3>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
-            {achievements.map((ach) => (
-              <div
-                key={ach.label}
-                className={cn(
-                  'flex flex-col items-center gap-1.5 min-w-[72px] p-3 rounded-xl border',
-                  ach.earned ? 'border-border bg-card shadow-sm' : 'border-dashed border-border/50 bg-muted/30 opacity-50'
-                )}
-              >
-                <div className={cn('p-2 rounded-full', ach.color)}>
-                  <ach.icon className="w-4 h-4" />
-                </div>
-                <span className="text-[9px] font-medium text-center text-muted-foreground">{ach.label}</span>
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-primary flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Reading Plans</h3>
+              <Button size="sm" variant="ghost" onClick={() => navigate('/devotional')}>Devotional</Button>
+            </div>
+            {activeReadingPlans.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active reading plans yet. Start a plan from the Devotional page.</p>
+            ) : (
+              <div className="space-y-2">
+                {activeReadingPlans.map(({ plan, progress }) => {
+                  const done = Object.keys(progress?.completedDays || {}).length
+                  const pct = Math.round((done / Math.max(1, plan.days.length)) * 100)
+                  return (
+                    <div key={plan.id} className="p-3 rounded-xl bg-secondary/20 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-foreground line-clamp-1">{plan.title}</p>
+                        <span className="text-xs font-semibold text-primary">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-secondary/50 overflow-hidden"><div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} /></div>
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
-        </div>
-      </motion.div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Edit Spiritual Goals Dialog */}
-      <Dialog open={goalsModalOpen} onOpenChange={setGoalsModalOpen}>
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="p-4 space-y-3">
+            <h3 className="font-semibold text-primary flex items-center gap-2"><Award className="w-4 h-4" /> Highlights</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-secondary/20 p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><PenLine className="w-3.5 h-3.5" /> Journal</p>
+                <p className="text-lg font-bold text-primary">{journalCount}</p>
+              </div>
+              <div className="rounded-xl bg-secondary/20 p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Star className="w-3.5 h-3.5" /> Favorite Hymns</p>
+                <p className="text-lg font-bold text-primary">{hymnFavCount}</p>
+              </div>
+              <div className="rounded-xl bg-secondary/20 p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Active (7 days)</p>
+                <p className="text-lg font-bold text-primary">{weekSummary.active}</p>
+              </div>
+              <div className="rounded-xl bg-secondary/20 p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Streak</p>
+                <p className="text-lg font-bold text-primary">{streak}</p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" className="flex-1" onClick={() => navigate('/journal')}>Journal</Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate('/hymns')}>Hymns</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={showGoals} onOpenChange={setShowGoals}>
         <DialogContent className="max-w-sm rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Personal Spiritual Goals</DialogTitle>
+            <DialogTitle>Spiritual Goals</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 mt-2">
+          <div className="space-y-4">
             <div>
-              <label className="text-xs font-bold uppercase text-muted-foreground">Personal Focus Theme</label>
-              <Input
-                value={goals.focusTheme}
-                onChange={(e) => setGoals({ ...goals, focusTheme: e.target.value })}
-                placeholder="e.g. Walking in daily prayer & Scripture"
-              />
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Focus theme</label>
+              <Input value={editGoals.focusTheme} onChange={(e) => setEditGoals((g) => ({ ...g, focusTheme: e.target.value }))} className="mt-1" />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase text-muted-foreground">Devotionals Milestone Target</label>
-              <Input
-                type="number"
-                min={1}
-                max={365}
-                value={goals.weeklyDevotionalsTarget}
-                onChange={(e) => setGoals({ ...goals, weeklyDevotionalsTarget: Math.max(1, Number(e.target.value)) })}
-              />
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Weekly devotionals target</label>
+              <Input type="number" min={1} max={7} value={editGoals.weeklyDevotionalsTarget} onChange={(e) => setEditGoals((g) => ({ ...g, weeklyDevotionalsTarget: Number(e.target.value) }))} className="mt-1" />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase text-muted-foreground">Bible Chapters Target</label>
-              <Input
-                type="number"
-                min={1}
-                max={1189}
-                value={goals.weeklyChaptersTarget}
-                onChange={(e) => setGoals({ ...goals, weeklyChaptersTarget: Math.max(1, Number(e.target.value)) })}
-              />
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Weekly chapters target</label>
+              <Input type="number" min={1} max={50} value={editGoals.weeklyChaptersTarget} onChange={(e) => setEditGoals((g) => ({ ...g, weeklyChaptersTarget: Number(e.target.value) }))} className="mt-1" />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase text-muted-foreground">Prayers Target</label>
-              <Input
-                type="number"
-                min={1}
-                max={500}
-                value={goals.weeklyPrayersTarget}
-                onChange={(e) => setGoals({ ...goals, weeklyPrayersTarget: Math.max(1, Number(e.target.value)) })}
-              />
+              <label className="text-xs font-semibold text-muted-foreground uppercase">Weekly prayers target</label>
+              <Input type="number" min={1} max={50} value={editGoals.weeklyPrayersTarget} onChange={(e) => setEditGoals((g) => ({ ...g, weeklyPrayersTarget: Number(e.target.value) }))} className="mt-1" />
             </div>
-            <Button onClick={handleSaveGoals} className="w-full rounded-xl">
-              Save Spiritual Goals
-            </Button>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowGoals(false)}>Cancel</Button>
+              <Button onClick={saveGoals}>Save Goals</Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

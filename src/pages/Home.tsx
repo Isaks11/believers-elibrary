@@ -15,7 +15,7 @@ import {
   ScrollText,
   HeartHandshake,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { AppIcon } from '@/components/common/AppIcon';
 import { DonateDialog } from '@/components/common/DonateDialog';
@@ -24,6 +24,15 @@ import { getDevotionals } from '@/data/mockDevotionalHymnData';
 import { cmsDevotionalToPageDevotional, loadAllPublishedDevotionals, loadDailyVerse } from '@/lib/contentSource';
 import { MONTHS, type DevotionalEntry } from '@/types/devotional-hymn';
 import { toast } from 'sonner';
+
+const HERO_IMAGES = [
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80', // sky
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1400&q=80', // nature/landscape
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80', // ocean
+  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1400&q=80', // forest
+  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1400&q=80', // flowers
+  'https://images.unsplash.com/photo-1474511320723-9a56873867b5?auto=format&fit=crop&w=1400&q=80', // wildlife
+];
 
 const DAILY_VERSE = {
   text: '"For I know the plans I have for you," declares the LORD, "plans to prosper you and not to harm you, plans to give you hope and a future."',
@@ -41,6 +50,14 @@ export function Home() {
   const navigate = useNavigate();
   const [cmsVerse, setCmsVerse] = useState<{ text: string; ref: string } | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [heroImageIndex, setHeroImageIndex] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setHeroImageIndex((i) => (i + 1) % HERO_IMAGES.length);
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // Scripture of the day from the church CMS (memoized for 5 minutes in
   // contentSource). While it loads — and if there is none — the built-in
@@ -143,18 +160,33 @@ export function Home() {
 
       {/* Daily Verse */}
       <Card className="bg-primary text-primary-foreground border-none shadow-xl overflow-hidden relative group">
-        <div className="absolute inset-0 bg-[url('https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/bible-module-bg-2d68d807-1782601933195.webp')] bg-cover opacity-20 group-hover:scale-110 transition-transform duration-700" />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={heroImageIndex}
+            initial={{ opacity: 0.15, scale: 1.04 }}
+            animate={{ opacity: 0.28, scale: 1 }}
+            exit={{ opacity: 0.1 }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
+            className="absolute inset-0 bg-cover bg-center"
+            style={{ backgroundImage: `url('${HERO_IMAGES[heroImageIndex]}')` }}
+          />
+        </AnimatePresence>
+        <div className="absolute inset-0 bg-gradient-to-br from-black/35 via-primary/40 to-black/25" />
         <CardContent className="p-6 relative z-10 space-y-4">
-          <Badge variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-none">Daily Verse</Badge>
-          <blockquote className="text-xl font-serif italic leading-relaxed">
+          <Badge variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-none backdrop-blur-sm">Daily Verse</Badge>
+          <blockquote className="text-xl font-serif italic leading-relaxed drop-shadow-sm">
             {dailyVerse.text}
           </blockquote>
-          <cite className="block text-sm opacity-80">— {dailyVerse.reference}</cite>
+          <cite className="block text-sm text-white/90 font-medium">- {dailyVerse.reference}</cite>
           <div className="flex gap-2 pt-2">
-            <Button size="sm" variant="secondary" className="bg-white text-primary hover:bg-white/90" onClick={shareVerse}>
+            <Button size="sm" variant="secondary" className="bg-white text-primary hover:bg-white/90 shadow-sm" onClick={shareVerse}>
               Share
             </Button>
-            <Button size="sm" variant="outline" className="text-white border-white/40 hover:bg-white/10" onClick={() => navigate('/journal')}>
+            <Button
+              size="sm"
+              className="bg-black/35 border border-white/70 text-white hover:bg-black/45 hover:text-white backdrop-blur-sm shadow-sm"
+              onClick={() => navigate('/journal?kind=reflection')}
+            >
               Reflect
             </Button>
           </div>
@@ -173,7 +205,20 @@ export function Home() {
           className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
           onClick={() => navigate('/devotional')}
         >
-          <div className="h-48 bg-[url('https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/devotional-cover-1-cb4ac9fc-1782601932817.webp')] bg-cover bg-center" />
+          <div className="relative h-48 overflow-hidden">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`dev-card-${heroImageIndex}`}
+                initial={{ opacity: 0.5, scale: 1.03 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0.4 }}
+                transition={{ duration: 1.1 }}
+                className="absolute inset-0 bg-cover bg-center"
+                style={{ backgroundImage: `url('${HERO_IMAGES[(heroImageIndex + 2) % HERO_IMAGES.length]}')` }}
+              />
+            </AnimatePresence>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+          </div>
           <CardContent className="p-5 space-y-2">
             <div className="flex justify-between items-center text-xs text-muted-foreground font-medium uppercase tracking-wider">
               <span>{dateLabel}</span>
