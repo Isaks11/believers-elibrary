@@ -14,7 +14,7 @@
  *   falling back to plain text) and shows a local notification.
  */
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const SHELL_CACHE = `believers-library-shell-${CACHE_VERSION}`;
 const SCRIPTURE_CACHE = `believers-library-scripture-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `believers-library-runtime-${CACHE_VERSION}`;
@@ -27,6 +27,19 @@ const PRECACHE_URLS = [
   '/icon-192.png',
   '/icon-512.png',
   '/brand-logo.png',
+];
+
+// Visual background images used across Home/Devotional/Dashboard/Hymn.
+// Prefetched best-effort so they are available offline after first install/update.
+const IMAGE_PRECACHE_URLS = [
+  'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1400&q=80',
+  'https://images.unsplash.com/photo-1474511320723-9a56873867b5?auto=format&fit=crop&w=1400&q=80',
+  'https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/devotional-cover-1-cb4ac9fc-1782601932817.webp',
+  'https://storage.googleapis.com/dala-prod-public-storage/generated-images/f095a220-d4e4-4a6a-8aec-8a5aa9c8ce04/bible-module-bg-2d68d807-1782601933195.webp',
 ];
 
 function isPrivateOrAuthenticatedRequest(request) {
@@ -45,14 +58,30 @@ function isPrivateOrAuthenticatedRequest(request) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(SHELL_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .catch(() => {
-        /* Tolerate individual pre-cache failure so SW still installs */
-      })
-  );
+  event.waitUntil((async () => {
+    try {
+      const shell = await caches.open(SHELL_CACHE);
+      await shell.addAll(PRECACHE_URLS).catch(() => {});
+    } catch {
+      /* Tolerate shell pre-cache failure so SW still installs */
+    }
+    try {
+      const runtime = await caches.open(RUNTIME_CACHE);
+      await Promise.all(
+        IMAGE_PRECACHE_URLS.map(async (url) => {
+          try {
+            const req = new Request(url, { mode: 'no-cors' });
+            const res = await fetch(req);
+            if (res) await runtime.put(req, res);
+          } catch {
+            /* Best-effort: image may cache later when viewed online */
+          }
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  })());
 });
 
 self.addEventListener('activate', (event) => {
