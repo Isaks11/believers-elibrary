@@ -43,7 +43,7 @@ import type { ReadingPlan, ReadingPlanDay } from '@/data/readingPlans'
 import type { LibraryItem } from '@/types/library-news'
 import { parseBibleRef } from '@/lib/bibleService'
 import { loadDailyVerseFromSettings } from '@/lib/dailyVerses'
-import { splitHymnTitleAndTune } from '@/lib/hymnUtils'
+import { getHymnSectionType, splitHymnTitleAndTune } from '@/lib/hymnUtils'
 
 /** In-memory cache TTL — five minutes. */
 export const CONTENT_SOURCE_TTL_MS = 5 * 60 * 1000
@@ -339,6 +339,7 @@ export function cmsHymnToPageHymn(record: HymnRecord): Hymn {
       'Unknown',
     stanzas: stanzas.length > 0 ? stanzas : [lyrics],
     isFavorite: favorites.has(id),
+    hymnType: getHymnSectionType(record),
   }
   if (tune) hymn.tuneName = tune
   if (record.meter) hymn.meter = record.meter

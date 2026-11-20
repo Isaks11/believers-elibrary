@@ -36,6 +36,7 @@ export interface Hymn {
   chorus?: string
   audioUrl?: string
   isFavorite?: boolean
+  hymnType?: 'hymn' | 'chorus'
 }
 
 export const BIBLE_VERSIONS: BibleVersion[] = ['KJV', 'WEB', 'BBE', 'ASV', 'ESV']

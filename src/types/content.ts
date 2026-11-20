@@ -82,6 +82,7 @@ export interface HymnRecord extends BaseContentRecord {
   audio_url: string | null;
   public_domain: boolean;
   hymn_category: string | null;
+  hymn_type?: 'hymn' | 'chorus' | null;
   meter: string | null;
   composer: string | null;
   tune?: string | null;

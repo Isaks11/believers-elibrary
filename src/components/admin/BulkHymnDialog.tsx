@@ -17,7 +17,7 @@ import {
 import { toast } from 'sonner'
 import { parseCsvToGrid } from '@/lib/csvParser'
 import { bulkCreateContent, listContent, storageFeedback } from '@/lib/contentAdmin'
-import { findHymnNumberConflict, splitHymnTitleAndTune } from '@/lib/hymnUtils'
+import { findHymnNumberConflict, splitHymnTitleAndTune, type HymnSectionType } from '@/lib/hymnUtils'
 import { useAuth } from '@/contexts/AuthContext'
 import type { ContentDraft, HymnRecord } from '@/types/content'
 
@@ -40,6 +40,7 @@ interface ParsedHymnRow {
   audio_url: string | null
   offline_policy: 'online_only' | 'optional' | 'essential'
   status: 'draft' | 'published'
+  hymn_type: HymnSectionType
 }
 
 function parseTags(raw: string): string[] {
@@ -65,6 +66,7 @@ function normalizeHeader(h: string): string {
   if (clean === 'text' || clean === 'words' || clean === 'verses') return 'lyrics'
   if (clean === 'author' || clean === 'writer') return 'composer'
   if (clean === 'tune' || clean === 'tunename') return 'tune'
+  if (clean === 'type' || clean === 'hymntype' || clean === 'section') return 'hymn_type'
   if (clean === 'lang') return 'language'
   if (clean === 'tag' || clean === 'keywords') return 'tags'
   if (clean === 'audio' || clean === 'audiourl' || clean === 'audiofile') return 'audio_url'
@@ -140,6 +142,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
   const [errors, setErrors] = useState<{ rowNumber: number; message: string }[]>([])
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [sectionType, setSectionType] = useState<HymnSectionType>('hymn')
 
   const actor = { id: user?.id ?? null, role: user?.role ?? 'user' }
 
@@ -194,6 +197,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
       const categoryIdx = idx('category')
       const composerIdx = idx('composer')
       const tuneIdx = idx('tune')
+      const hymnTypeIdx = idx('hymn_type')
       const meterIdx = idx('meter')
       const languageIdx = idx('language')
       const tagsIdx = idx('tags')
@@ -208,7 +212,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
 
       const parsedValid: ParsedHymnRow[] = []
       const parsedErrors: { rowNumber: number; message: string }[] = []
-      const seenNumbers = new Map<number, { rowNum: number; title: string }>()
+      const seenNumbers = new Map<string, { rowNum: number; title: string }>()
 
       for (let i = 1; i < grid.length; i++) {
         const row = grid[i]
@@ -219,6 +223,14 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         const rawTune = (tuneIdx !== -1 ? row[tuneIdx] : '')?.trim() || null
         const { title, tune } = splitHymnTitleAndTune(rawTitle, rawTune)
         const lyrics = (row[lyricsIdx] || '').trim()
+        const rawRowType = (hymnTypeIdx !== -1 ? row[hymnTypeIdx] : '')?.trim().toLowerCase() || ''
+        const rowSection: HymnSectionType =
+          rawRowType === 'chorus' || rawRowType === 'choruses'
+            ? 'chorus'
+            : rawRowType === 'hymn' || rawRowType === 'hymns'
+              ? 'hymn'
+              : sectionType
+        const sectionLabel = rowSection === 'chorus' ? 'Chorus' : 'Hymn'
 
         if (!title) {
           parsedErrors.push({ rowNumber: rowNum, message: 'Title is required' })
@@ -232,29 +244,30 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         const numStr = numberIdx !== -1 ? (row[numberIdx] || '').trim() : ''
         const parsedNum = numStr ? Number(numStr) : null
         if (numStr && (!Number.isInteger(parsedNum) || (parsedNum ?? 0) <= 0)) {
-          parsedErrors.push({ rowNumber: rowNum, message: `Invalid hymn number "${numStr}". Must be a positive whole number.` })
+          parsedErrors.push({ rowNumber: rowNum, message: `Invalid ${sectionLabel.toLowerCase()} number "${numStr}". Must be a positive whole number.` })
           continue
         }
 
         const hymnNumber = parsedNum != null && Number.isFinite(parsedNum) ? parsedNum : null
         if (hymnNumber !== null) {
-          const conflict = findHymnNumberConflict(hymnNumber, existingCmsHymns)
+          const conflict = findHymnNumberConflict(hymnNumber, existingCmsHymns, null, rowSection)
           if (conflict) {
             parsedErrors.push({
               rowNumber: rowNum,
-              message: `Hymn #${hymnNumber} is already used by "${conflict.title}" (${conflict.source === 'built-in' ? 'Built-in' : 'Library'})`,
+              message: `${sectionLabel} #${hymnNumber} is already used by "${conflict.title}"`,
             })
             continue
           }
-          const csvDup = seenNumbers.get(hymnNumber)
+          const dupKey = `${rowSection}:${hymnNumber}`
+          const csvDup = seenNumbers.get(dupKey)
           if (csvDup) {
             parsedErrors.push({
               rowNumber: rowNum,
-              message: `Duplicate hymn #${hymnNumber} in CSV (already used on row ${csvDup.rowNum} by "${csvDup.title}")`,
+              message: `Duplicate ${sectionLabel.toLowerCase()} #${hymnNumber} in CSV (already used on row ${csvDup.rowNum} by "${csvDup.title}")`,
             })
             continue
           }
-          seenNumbers.set(hymnNumber, { rowNum, title })
+          seenNumbers.set(dupKey, { rowNum, title })
         }
 
         parsedValid.push({
@@ -270,6 +283,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
           audio_url: (audioIdx !== -1 ? row[audioIdx] : '')?.trim() || null,
           offline_policy: normalizeOfflinePolicy((offlineIdx !== -1 ? row[offlineIdx] : '') || 'optional'),
           status: normalizeStatus((statusIdx !== -1 ? row[statusIdx] : '') || 'published'),
+          hymn_type: rowSection,
         })
       }
 
@@ -310,6 +324,8 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         number: row.number,
         lyrics: row.lyrics,
         category: row.category,
+        hymn_category: row.hymn_type === 'chorus' ? (row.category || 'Chorus') : row.category,
+        hymn_type: row.hymn_type,
         composer: row.composer,
         tune: row.tune,
         meter: row.meter,
@@ -381,6 +397,34 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
                 </ul>
               </CardContent>
             </Card>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-secondary/30 border border-border/50">
+            <div>
+              <p className="text-xs font-semibold text-primary">Upload Destination Section</p>
+              <p className="text-[11px] text-muted-foreground">Choruses have their own independent numbers (#1, #2, …) separate from Hymns.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 shrink-0">
+              {(['hymn', 'chorus'] as HymnSectionType[]).map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  onClick={() => {
+                    if (sectionType !== sec) {
+                      setSectionType(sec)
+                      handleReset()
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    sectionType === sec
+                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                      : 'bg-background text-muted-foreground border-border hover:text-primary'
+                  }`}
+                >
+                  {sec === 'chorus' ? 'Chorus' : 'Hymns'}
+                </button>
+              ))}
+            </div>
           </div>
 
           {!fileName ? (

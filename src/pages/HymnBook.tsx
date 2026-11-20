@@ -80,6 +80,7 @@ export function HymnBook() {
   const [recentIds, setRecentIds] = useState<string[]>(() => loadIdList(RECENT_HYMNS_KEY))
   const [playlistIds, setPlaylistIds] = useState<string[]>(() => loadIdList(PLAYLIST_HYMNS_KEY))
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => (localStorage.getItem('hymn_view_mode') === 'grid' ? 'grid' : 'list'))
+  const [activeSection, setActiveSection] = useState<'hymn' | 'chorus'>('hymn')
 
   useEffect(() => { try { localStorage.setItem('hymn_view_mode', viewMode) } catch {} }, [viewMode])
 
@@ -116,13 +117,26 @@ export function HymnBook() {
     return merged
   }, [localHymns, cmsHymns])
 
+  const hymnCount = useMemo(
+    () => hymns.filter((h) => (h.hymnType ?? 'hymn') === 'hymn').length,
+    [hymns]
+  )
+  const chorusCount = useMemo(
+    () => hymns.filter((h) => h.hymnType === 'chorus').length,
+    [hymns]
+  )
+  const sectionHymns = useMemo(
+    () => hymns.filter((h) => (h.hymnType ?? 'hymn') === activeSection),
+    [hymns, activeSection]
+  )
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim()
-    const numberQuery = q.replace(/^(hymn\s*#?\s*|#)/i, '').trim()
+    const numberQuery = q.replace(/^(?:hymn|chorus)\s*#?\s*|#/i, '').trim()
     const isNumericQuery = /^\d+$/.test(numberQuery)
     const exactNum = isNumericQuery ? Number(numberQuery) : null
 
-    const matches = hymns.filter(h => {
+    const matches = sectionHymns.filter(h => {
       const inCategory =
         category === 'All' ||
         (category === 'Favorites' ? h.isFavorite : true) &&
@@ -151,7 +165,7 @@ export function HymnBook() {
     }
 
     return matches
-  }, [hymns, category, query, playlistIds, recentIds])
+  }, [sectionHymns, category, query, playlistIds, recentIds])
 
   const toggleFavorite = (id: string) => {
     const hymn = hymns.find(h => h.id === id)
@@ -182,7 +196,7 @@ export function HymnBook() {
         <div>
           <h1 className="text-2xl font-serif text-primary">Hymn Book</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Timeless hymns of the faith • {hymns.length} hymns
+            Timeless hymns &amp; choruses • {sectionHymns.length} {activeSection === 'chorus' ? 'choruses' : 'hymns'}
           </p>
         </div>
         <div className="flex items-center gap-1 bg-secondary/30 rounded-xl p-1 shrink-0">
@@ -194,6 +208,46 @@ export function HymnBook() {
           </Button>
         </div>
       </header>
+
+      {/* Sub-section Switcher: Hymns vs Chorus */}
+      <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-secondary/35 border border-border/50">
+        <button
+          type="button"
+          onClick={() => setActiveSection('hymn')}
+          className={cn(
+            'py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5',
+            activeSection === 'hymn'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-primary'
+          )}
+        >
+          <span>Hymns</span>
+          <span className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded-full',
+            activeSection === 'hymn' ? 'bg-white/20 text-white' : 'bg-background text-muted-foreground'
+          )}>
+            {hymnCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('chorus')}
+          className={cn(
+            'py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5',
+            activeSection === 'chorus'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-primary'
+          )}
+        >
+          <span>Chorus</span>
+          <span className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded-full',
+            activeSection === 'chorus' ? 'bg-white/20 text-white' : 'bg-background text-muted-foreground'
+          )}>
+            {chorusCount}
+          </span>
+        </button>
+      </div>
 
       {/* Search */}
       <div className="relative">
@@ -226,7 +280,9 @@ export function HymnBook() {
 
       {viewMode === 'grid' ? (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Select a hymn by number</p>
+          <p className="text-xs text-muted-foreground">
+            {activeSection === 'chorus' ? 'Select a chorus by number' : 'Select a hymn by number'}
+          </p>
           <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-8 gap-2">
             {filtered.map((hymn) => (
               <button
@@ -265,7 +321,9 @@ export function HymnBook() {
                     >
                       <div className="w-12 h-12 rounded-2xl flex flex-col items-center justify-center shrink-0 bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <span className="text-lg font-bold leading-none">{hymn.number > 0 ? hymn.number : '—'}</span>
-                        <span className="text-[8px] uppercase font-bold opacity-70">Hymn</span>
+                        <span className="text-[8px] uppercase font-bold opacity-70">
+                          {hymn.hymnType === 'chorus' ? 'Chorus' : 'Hymn'}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-bold text-primary truncate group-hover:text-primary/80 transition-colors">
@@ -326,7 +384,7 @@ export function HymnBook() {
             onClose={() => setDetailId(null)}
             onFavorite={() => toggleFavorite(detail.id)}
             onTogglePlaylist={() => togglePlaylist(detail.id)}
-            allHymns={hymns}
+            allHymns={sectionHymns}
             onOpen={openHymnDetail}
           />
         )}
@@ -425,7 +483,9 @@ function HymnDetail({ hymn, inPlaylist, onClose, onFavorite, onTogglePlaylist, a
         </Button>
         <div className="absolute inset-x-0 bottom-0 p-6 pt-20 space-y-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <Badge className="bg-white/20 text-white border-none text-[11px] font-bold px-2.5 py-1">Hymn {hymn.number}</Badge>
+            <Badge className="bg-white/20 text-white border-none text-[11px] font-bold px-2.5 py-1">
+              {hymn.hymnType === 'chorus' ? 'Chorus' : 'Hymn'} {hymn.number > 0 ? hymn.number : '—'}
+            </Badge>
             <Badge className="bg-accent text-accent-foreground text-[11px] font-bold px-2.5 py-1">{hymn.category}</Badge>
             {isCmsHymn(hymn) && <Badge className="bg-white/20 text-white border-none text-[11px] font-bold px-2.5 py-1">Library</Badge>}
           </div>

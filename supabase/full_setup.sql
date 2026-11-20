@@ -1031,6 +1031,8 @@ create table if not exists public.hymns (
   audio_url           text,
   public_domain       boolean not null default true,
   hymn_category       text,
+  hymn_type           text not null default 'hymn' check (hymn_type in ('hymn', 'chorus')),
+  tune                text,
   meter               text,
   composer            text,
   slug                text not null,

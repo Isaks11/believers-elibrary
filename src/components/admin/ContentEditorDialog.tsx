@@ -42,8 +42,10 @@ import {
 } from '@/types/content'
 import {
   findHymnNumberConflict,
+  getHymnSectionType,
   getNextAvailableHymnNumber,
   splitHymnTitleAndTune,
+  type HymnSectionType,
 } from '@/lib/hymnUtils'
 import { can } from '@/lib/permissions'
 import { useAuth } from '@/contexts/AuthContext'
@@ -82,6 +84,7 @@ type FormState = {
   meter: string
   composer: string
   tune: string
+  hymn_type: HymnSectionType
   video_url: string
   thumbnail_url: string
   speaker: string
@@ -172,6 +175,7 @@ function emptyForm(): FormState {
     meter: '',
     composer: '',
     tune: '',
+    hymn_type: 'hymn',
     video_url: '',
     thumbnail_url: '',
     speaker: '',
@@ -217,6 +221,13 @@ function formFromRecord(record: AnyContentRecord | null): FormState {
     meter: asString(row.meter),
     composer: asString(row.composer),
     tune: parsedTitleAndTune.tune || asString(row.tune),
+    hymn_type: isHymnRecord
+      ? getHymnSectionType({
+          hymn_type: (row.hymn_type as HymnSectionType | null | undefined) ?? null,
+          hymn_category: asString(row.hymn_category) || null,
+          category: asString(row.category) || null,
+        })
+      : 'hymn',
     video_url: asString(row.video_url),
     thumbnail_url: asString(row.thumbnail_url),
     speaker: asString(row.speaker),
@@ -279,7 +290,8 @@ function buildDraft(type: ContentEntityType, form: FormState): Record<string, un
         meter: form.meter.trim() || null,
         composer: form.composer.trim() || null,
         tune: form.tune.trim() || null,
-        hymn_category: trimmedCategory || null,
+        hymn_type: form.hymn_type,
+        hymn_category: trimmedCategory || (form.hymn_type === 'chorus' ? 'Chorus' : null),
       }
     }
     case 'video':
@@ -357,10 +369,10 @@ export function ContentEditorDialog({
     type === 'hymn' && form.number.trim() ? Number(form.number.trim()) : null
   const hymnNumberConflict =
     type === 'hymn' && parsedHymnNumber !== null && Number.isFinite(parsedHymnNumber)
-      ? findHymnNumberConflict(parsedHymnNumber, existingHymns, record?.id ?? null)
+      ? findHymnNumberConflict(parsedHymnNumber, existingHymns, record?.id ?? null, form.hymn_type)
       : null
   const nextAvailableHymnNumber =
-    type === 'hymn' ? getNextAvailableHymnNumber(existingHymns) : 1
+    type === 'hymn' ? getNextAvailableHymnNumber(existingHymns, form.hymn_type) : 1
 
   // Re-initialise only when the dialog opens or a different record is loaded —
   // list refreshes must not clobber what the author is typing.
@@ -399,7 +411,8 @@ export function ContentEditorDialog({
         return null
       }
       if (hymnNumberConflict) {
-        const msg = `Hymn #${numVal} is already used by "${hymnNumberConflict.title}" (${hymnNumberConflict.source === 'built-in' ? 'Built-in' : 'Library'}). Please choose another number (e.g. #${nextAvailableHymnNumber}).`
+        const sectionLabel = form.hymn_type === 'chorus' ? 'Chorus' : 'Hymn'
+        const msg = `${sectionLabel} #${numVal} is already used by "${hymnNumberConflict.title}". Please choose another number (e.g. #${nextAvailableHymnNumber}).`
         setErrors([msg])
         toast.error(msg)
         return null
@@ -749,10 +762,41 @@ export function ContentEditorDialog({
 
             {type === 'hymn' && (
               <>
+                <div>
+                  <FieldLabel>Section</FieldLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => set('hymn_type', 'hymn')}
+                      className={cn(
+                        'py-2 px-3 rounded-lg text-xs font-bold border transition-all',
+                        form.hymn_type === 'hymn'
+                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                          : 'bg-background text-muted-foreground border-border hover:text-primary'
+                      )}
+                    >
+                      Hymn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set('hymn_type', 'chorus')}
+                      className={cn(
+                        'py-2 px-3 rounded-lg text-xs font-bold border transition-all',
+                        form.hymn_type === 'chorus'
+                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                          : 'bg-background text-muted-foreground border-border hover:text-primary'
+                      )}
+                    >
+                      Chorus (Short Hymn)
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-semibold text-muted-foreground uppercase">Hymn Number</span>
+                      <span className="text-xs font-semibold text-muted-foreground uppercase">
+                        {form.hymn_type === 'chorus' ? 'Chorus Number' : 'Hymn Number'}
+                      </span>
                       <button
                         type="button"
                         onClick={() => set('number', String(nextAvailableHymnNumber))}

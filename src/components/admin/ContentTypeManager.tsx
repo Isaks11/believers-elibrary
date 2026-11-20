@@ -51,7 +51,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ContentEditorDialog } from '@/components/admin/ContentEditorDialog'
 import { BulkDevotionalDialog } from '@/components/admin/BulkDevotionalDialog'
 import { BulkHymnDialog } from '@/components/admin/BulkHymnDialog'
-import { splitHymnTitleAndTune } from '@/lib/hymnUtils'
+import { getHymnSectionType, splitHymnTitleAndTune } from '@/lib/hymnUtils'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 10
@@ -426,6 +426,11 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
                     {type === 'hymn' && typeof (row as any).number === 'number' && (row as any).number > 0 && (
                       <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono bg-primary/10 text-primary border-primary/20">
                         #{(row as any).number}
+                      </Badge>
+                    )}
+                    {type === 'hymn' && getHymnSectionType(row as any) === 'chorus' && (
+                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                        Chorus
                       </Badge>
                     )}
                     <h4 className="text-xs font-bold text-primary truncate max-w-[65%]">{displayTitle}</h4>
