@@ -248,9 +248,11 @@ export async function loadDailyVerse(): Promise<{ text: string; ref: string } | 
   }
   try {
     const rows = await loadPublishedRecords('devotional')
+    const today = todayDeviceLocalDate()
     let newest: { text: string; ref: string } | null = null
     let newestTs = -1
     for (const row of rows) {
+      if (row.devotional_date !== today) continue
       if (!row.verse_text || !row.verse_ref) continue
       const ts = publishedTs(row)
       if (ts >= newestTs) {

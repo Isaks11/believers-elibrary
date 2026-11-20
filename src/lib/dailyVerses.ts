@@ -167,10 +167,8 @@ export function pickDailyVerseForToday(rows: DailyVerseRecord[]): { text: string
   const today = todayKey()
   const exact = active.find((r) => r.verse_date === today)
   if (exact) return { text: exact.verse_text, ref: exact.verse_ref }
-  // fallback: most recent dated active verse, else most recently added
-  const sorted = [...active].sort(sortVerses)
-  const chosen = sorted[0]
-  return chosen ? { text: chosen.verse_text, ref: chosen.verse_ref } : null
+  // No verse pinned specifically for today — let the 366-day library rotate daily.
+  return null
 }
 
 export async function loadDailyVerseFromSettings(): Promise<{ text: string; ref: string } | null> {

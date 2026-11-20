@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { AppIcon } from '@/components/common/AppIcon';
 import { DonateDialog } from '@/components/common/DonateDialog';
+import { getDailyVerseForDate } from '@/data/dailyVerseLibrary';
 import { computeStreak, activeDaysThisWeek, countCompletedDevotionals } from '@/lib/activity';
 import { getDevotionals } from '@/data/mockDevotionalHymnData';
 import { cmsDevotionalToPageDevotional, loadAllPublishedDevotionals, loadDailyVerse } from '@/lib/contentSource';
@@ -34,9 +35,10 @@ const HERO_IMAGES = [
   'https://images.unsplash.com/photo-1474511320723-9a56873867b5?auto=format&fit=crop&w=1400&q=80', // wildlife
 ];
 
+const TODAY_FALLBACK_VERSE = getDailyVerseForDate();
 const DAILY_VERSE = {
-  text: '"For I know the plans I have for you," declares the LORD, "plans to prosper you and not to harm you, plans to give you hope and a future."',
-  reference: 'Jeremiah 29:11',
+  text: TODAY_FALLBACK_VERSE.text,
+  reference: TODAY_FALLBACK_VERSE.ref,
 };
 
 function greetingForHour(hour: number): string {
