@@ -41,6 +41,7 @@ import {
   BookMarked,
   BarChart3,
   FileText,
+  MessageSquare,
 } from 'lucide-react'
 import { getLibraryItems, getPrayerAlerts, getNewsItems, syncFaithDataFromServer } from '@/data/mockFaithData'
 import { getModerationReports } from '@/data/communityData'
@@ -67,6 +68,7 @@ import { DonationSettingsSection } from '@/components/admin/DonationSettingsSect
 import { DailyVerseSection } from '@/components/admin/DailyVerseSection'
 import { VisitorAnalyticsSection } from '@/components/admin/VisitorAnalyticsSection'
 import { PrivacySettingsSection } from '@/components/admin/PrivacySettingsSection'
+import { ContactSettingsSection } from '@/components/admin/ContactSettingsSection'
 import { recordWriteOutcome, recordWriteError } from '@/lib/syncHealth'
 import { cn } from '@/lib/utils'
 
@@ -85,6 +87,7 @@ type SectionKey =
   | 'daily_verses'
   | 'analytics'
   | 'privacy'
+  | 'contact'
 
 type SectionDef = {
   key: SectionKey
@@ -107,6 +110,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'moderation', label: 'Moderation', icon: ShieldCheck },
   { key: 'giving', label: 'Giving / Donations', icon: HandHeart, action: 'users:manage' },
   { key: 'privacy', label: 'Privacy Terms', icon: FileText, action: 'users:manage' },
+  { key: 'contact', label: 'Contact Us', icon: MessageSquare, action: 'users:manage' },
   { key: 'analytics', label: 'Users & Visitors', icon: BarChart3, action: 'analytics:view' },
   { key: 'users', label: 'Users & Roles', icon: Users, action: 'users:manage' },
   { key: 'audit', label: 'Audit Log', icon: ScrollText, action: 'audit:view' },
@@ -289,6 +293,8 @@ export function Admin() {
         return <VisitorAnalyticsSection />
       case 'privacy':
         return <PrivacySettingsSection />
+      case 'contact':
+        return <ContactSettingsSection />
       case 'users':
         return <UserRolePanel />
       case 'audit':

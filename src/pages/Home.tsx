@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { AppIcon } from '@/components/common/AppIcon';
 import { DonateDialog } from '@/components/common/DonateDialog';
+import { ContactDialog } from '@/components/common/ContactDialog';
 import { getDailyVerseForDate } from '@/data/dailyVerseLibrary';
 import { computeStreak, activeDaysThisWeek, countCompletedDevotionals } from '@/lib/activity';
 import { getDevotionals } from '@/data/mockDevotionalHymnData';
@@ -52,6 +53,7 @@ export function Home() {
   const navigate = useNavigate();
   const [cmsVerse, setCmsVerse] = useState<{ text: string; ref: string } | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [heroImageIndex, setHeroImageIndex] = useState(0);
 
   useEffect(() => {
@@ -292,9 +294,14 @@ export function Home() {
               </p>
             </div>
           </div>
-          <Button size="sm" className="shrink-0" onClick={() => setDonateOpen(true)}>
-            Give
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+            <Button size="sm" onClick={() => setDonateOpen(true)}>
+              Give
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setContactOpen(true)}>
+              Contact Us
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -319,6 +326,7 @@ export function Home() {
       </div>
 
       <DonateDialog open={donateOpen} onOpenChange={setDonateOpen} />
+      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
     </div>
   );
 }

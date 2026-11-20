@@ -31,8 +31,10 @@ import {
   Trash2,
   Camera,
   HeartHandshake,
+  MessageSquare,
 } from 'lucide-react';
 import { DonateDialog } from '@/components/common/DonateDialog';
+import { ContactDialog } from '@/components/common/ContactDialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -95,6 +97,7 @@ export function Profile() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeDialog, setActiveDialog] = useState<'settings' | 'history' | 'bookmarks' | 'backup' | 'legal' | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   const [nameInput, setNameInput] = useState(user?.name || '');
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
@@ -404,6 +407,12 @@ export function Profile() {
             label: 'Support / Give',
             count: 'View giving purpose and account details',
             onClick: () => setDonateOpen(true),
+          },
+          {
+            icon: MessageSquare,
+            label: 'Contact Us',
+            count: 'Reach out to our ministry team',
+            onClick: () => setContactOpen(true),
           },
           {
             icon: FileText,
@@ -800,6 +809,7 @@ export function Profile() {
       </Dialog>
 
       <DonateDialog open={donateOpen} onOpenChange={setDonateOpen} />
+      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} />
     </div>
   );
 }
