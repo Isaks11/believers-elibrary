@@ -47,6 +47,7 @@ import {
   splitHymnTitleAndTune,
   type HymnSectionType,
 } from '@/lib/hymnUtils'
+import { normalizeParagraphText } from '@/lib/csvParser'
 import { can } from '@/lib/permissions'
 import { useAuth } from '@/contexts/AuthContext'
 import { RevisionHistoryDialog } from '@/components/admin/RevisionHistoryDialog'
@@ -622,13 +623,45 @@ export function ContentEditorDialog({
             {type === 'devotional' && (
               <>
                 <div>
-                  <FieldLabel>Body *</FieldLabel>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase">Body *</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const formatted = normalizeParagraphText(form.body)
+                        if (formatted !== form.body) {
+                          set('body', formatted)
+                          toast.success('Formatted text into paragraphs')
+                        } else {
+                          toast.info('Text is already formatted into paragraphs')
+                        }
+                      }}
+                      className="text-[10px] font-semibold text-primary hover:underline"
+                    >
+                      Auto-Paragraph
+                    </button>
+                  </div>
                   <Textarea
                     value={form.body}
                     onChange={(e) => set('body', e.target.value)}
-                    placeholder="Devotional text…"
-                    className="min-h-[110px]"
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData('text/plain')
+                      if (!pasted || !pasted.includes('\n')) return
+                      const formatted = normalizeParagraphText(pasted)
+                      if (formatted === pasted.trim()) return
+                      e.preventDefault()
+                      const el = e.currentTarget
+                      const start = el.selectionStart ?? form.body.length
+                      const end = el.selectionEnd ?? form.body.length
+                      const next = form.body.slice(0, start) + formatted + form.body.slice(end)
+                      set('body', next)
+                    }}
+                    placeholder="Paste or type devotional text. Line breaks are automatically lined into paragraphs…"
+                    className="min-h-[130px]"
                   />
+                  <span className="text-[10px] text-muted-foreground">
+                    Copied &amp; pasted text is automatically lined into paragraphs. Leave a blank line or tap Auto-Paragraph anytime.
+                  </span>
                 </div>
                 {/* Structured Bible Reference Selection */}
                 <div>

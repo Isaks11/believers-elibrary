@@ -126,12 +126,32 @@ function normalizeOfflinePolicy(raw: string): 'online_only' | 'optional' | 'esse
  * Parses devotional CSV text and validates each row according to the CMS schema.
  */
 export function normalizeParagraphText(raw: string): string {
-  return raw
+  const normalized = raw
     .replace(/\\n/g, '\n')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\n[ \t]*\n+/g, '\n\n')
     .trim();
+  if (!normalized) return '';
+  // If copied/pasted text uses single newlines between paragraphs (no blank lines),
+  // promote each line break to a paragraph break (\n\n).
+  if (!/\n\s*\n/.test(normalized) && normalized.includes('\n')) {
+    return normalized
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join('\n\n');
+  }
+  return normalized;
+}
+
+export function splitDevotionalParagraphs(raw: string): string[] {
+  const normalized = (raw || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!normalized) return [];
+  if (/\n\s*\n/.test(normalized)) {
+    return normalized.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  }
+  return normalized.split('\n').map((p) => p.trim()).filter(Boolean);
 }
 
 export function normalizeTranslation(raw: string): string | null {

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { BIBLE_VERSIONS, BIBLE_VERSION_LABELS } from '@/types/devotional-hymn'
 import type { DevotionalEntry, BibleVersion } from '@/types/devotional-hymn'
 import { fetchVerseText } from '@/lib/bibleService'
+import { splitDevotionalParagraphs } from '@/lib/csvParser'
 
 export function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }: {
   entry: DevotionalEntry
@@ -206,8 +207,8 @@ ${entry.bibleVersions[version] ?? ''}` })
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-accent uppercase tracking-widest">Daily Reading</h3>
           <div className="space-y-4 text-foreground/90 font-serif leading-relaxed" style={{ fontSize }}>
-            {entry.mainBody.split(/\n\s*\n/).map((para, i) => (
-              <p key={i} className={cn('whitespace-pre-line', i > 0 && 'mt-4')}>{para.trim()}</p>
+            {splitDevotionalParagraphs(entry.mainBody).map((para, i) => (
+              <p key={i} className={cn('whitespace-pre-line', i > 0 && 'mt-4')}>{para}</p>
             ))}
           </div>
           <div className="rounded-xl bg-primary/5 border border-primary/10 p-4">

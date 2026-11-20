@@ -13,6 +13,7 @@ import {
   Heart, NotebookPen, Flame, Mic, BookOpen, Clock, GitBranch, Bell, Compass, ChevronRight
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { splitDevotionalParagraphs } from '@/lib/csvParser'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -966,8 +967,8 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-accent uppercase tracking-widest">Daily Reading</h3>
           <div className="space-y-4 text-foreground/90 leading-relaxed" style={{ fontSize, fontFamily: readingFontFamily }}>
-            {entry.mainBody.split(/\n\s*\n/).map((para, i) => (
-              <p key={i} className="whitespace-pre-line">{para.trim()}</p>
+            {splitDevotionalParagraphs(entry.mainBody).map((para, i) => (
+              <p key={i} className="whitespace-pre-line">{para}</p>
             ))}
           </div>
           {(entry.keyThought?.trim() || entry.prayer?.trim()) && (
