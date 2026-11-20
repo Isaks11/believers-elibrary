@@ -39,6 +39,7 @@ import {
   Database,
   HandHeart,
   BookMarked,
+  BarChart3,
 } from 'lucide-react'
 import { getLibraryItems, getPrayerAlerts, getNewsItems, syncFaithDataFromServer } from '@/data/mockFaithData'
 import { getModerationReports } from '@/data/communityData'
@@ -63,6 +64,7 @@ import { UserRolePanel } from '@/components/admin/UserRolePanel'
 import { AuditLogView } from '@/components/admin/AuditLogView'
 import { DonationSettingsSection } from '@/components/admin/DonationSettingsSection'
 import { DailyVerseSection } from '@/components/admin/DailyVerseSection'
+import { VisitorAnalyticsSection } from '@/components/admin/VisitorAnalyticsSection'
 import { recordWriteOutcome, recordWriteError } from '@/lib/syncHealth'
 import { cn } from '@/lib/utils'
 
@@ -79,6 +81,7 @@ type SectionKey =
   | 'audit'
   | 'giving'
   | 'daily_verses'
+  | 'analytics'
 
 type SectionDef = {
   key: SectionKey
@@ -100,6 +103,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'news', label: 'News', icon: Newspaper },
   { key: 'moderation', label: 'Moderation', icon: ShieldCheck },
   { key: 'giving', label: 'Giving / Donations', icon: HandHeart, action: 'users:manage' },
+  { key: 'analytics', label: 'Users & Visitors', icon: BarChart3, action: 'analytics:view' },
   { key: 'users', label: 'Users & Roles', icon: Users, action: 'users:manage' },
   { key: 'audit', label: 'Audit Log', icon: ScrollText, action: 'audit:view' },
 ]
@@ -277,6 +281,8 @@ export function Admin() {
         return <DonationSettingsSection />
       case 'daily_verses':
         return <DailyVerseSection />
+      case 'analytics':
+        return <VisitorAnalyticsSection />
       case 'users':
         return <UserRolePanel />
       case 'audit':
@@ -330,8 +336,22 @@ export function Admin() {
             {user ? ` • ${ROLE_LABELS[(role as UserRole) ?? 'user']}` : ''}
           </p>
         </div>
-        <div className="p-2 bg-primary/10 rounded-xl">
-          <LayoutDashboard className="w-5 h-5 text-primary" />
+        <div className="flex items-center gap-2">
+          {can(role, 'analytics:view') && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 gap-1.5 text-xs font-semibold"
+              onClick={() => setActiveSection('analytics')}
+            >
+              <BarChart3 className="w-4 h-4 text-primary" />
+              Users &amp; Visitors
+            </Button>
+          )}
+          <div className="p-2 bg-primary/10 rounded-xl">
+            <LayoutDashboard className="w-5 h-5 text-primary" />
+          </div>
         </div>
       </header>
 

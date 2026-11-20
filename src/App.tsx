@@ -9,6 +9,7 @@ import { syncFaithDataFromServer } from '@/data/mockFaithData';
 import { syncPersonalJournalFromServer } from '@/data/journalData';
 import { loadAllPublishedDevotionals, loadPublishedHymns, loadPublishedReadingPlans, loadPublishedVideos, loadPublishedFaithResources, loadDailyVerse } from '@/lib/contentSource';
 import { loadDonationSettings } from '@/lib/donationSettings';
+import { recordAppVisit } from '@/lib/visitorAnalytics';
 import { Home } from '@/pages/Home';
 import { Auth } from '@/pages/Auth';
 import { ForgotPassword } from '@/pages/ForgotPassword';
@@ -61,6 +62,7 @@ function ContentSync() {
 
   useEffect(() => {
     if (isLoading || !user) return;
+    void recordAppVisit(!user.isGuest);
 
     const preloadImages = () => {
       const urls = [
