@@ -5,6 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
+  READING_FONT_STYLES,
+  getFontFamily,
+  getSavedFontStyle,
+  type ReadingFontStyleId,
+} from '@/lib/readingFonts';
+import {
   Search,
   Settings,
   Bookmark,
@@ -234,6 +240,11 @@ export function Bible() {
   const [testamentFilter, setTestamentFilter] = useState<'ALL' | 'OT' | 'NT'>('ALL');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [fontSize, setFontSize] = useState(18);
+  const [fontStyle, setFontStyle] = useState<ReadingFontStyleId>(() => getSavedFontStyle('bible_font_style', 'serif'));
+  useEffect(() => {
+    try { localStorage.setItem('bible_font_style', fontStyle); } catch {}
+  }, [fontStyle]);
+  const readingFontFamily = getFontFamily(fontStyle);
   const [isParallel, setIsParallel] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -810,7 +821,7 @@ export function Bible() {
             Loading {chapterRef} ({version})...
           </div>
         ) : (
-          <div className="space-y-4 leading-relaxed" style={{ fontSize: `${fontSize}px` }}>
+          <div className="space-y-4 leading-relaxed" style={{ fontSize: `${fontSize}px`, fontFamily: readingFontFamily }}>
             {filteredVerses.map(({ idx, text }) => {
               const verseNum = idx + 1;
               const highlightKey = `${chapterRef}:${verseNum}`;
@@ -1162,6 +1173,24 @@ export function Bible() {
                 <Button size="sm" variant="outline" onClick={() => setFontSize((f) => Math.min(26, f + 2))}>
                   A+
                 </Button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-sm font-medium block">Font Style</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {READING_FONT_STYLES.map((s) => (
+                  <Button
+                    key={s.id}
+                    type="button"
+                    size="sm"
+                    variant={fontStyle === s.id ? 'default' : 'outline'}
+                    className="h-8 text-[11px] px-1.5 truncate"
+                    onClick={() => setFontStyle(s.id)}
+                    style={{ fontFamily: s.family }}
+                  >
+                    {s.label}
+                  </Button>
+                ))}
               </div>
             </div>
             <div className="flex items-center justify-between">

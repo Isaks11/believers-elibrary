@@ -14,6 +14,12 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { splitDevotionalParagraphs } from '@/lib/csvParser'
+import {
+  READING_FONT_STYLES,
+  getFontFamily,
+  getSavedFontStyle,
+  type ReadingFontStyleId,
+} from '@/lib/readingFonts'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -29,19 +35,10 @@ const DEVOTIONAL_HERO_IMAGES = [
   'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1400&q=80', // forest
 ]
 
-const DEVOTIONAL_FONT_STYLES = [
-  { id: 'serif', label: 'Serif', family: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif' },
-  { id: 'sans', label: 'Sans', family: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
-  { id: 'readable', label: 'Readable', family: '"Trebuchet MS", "Segoe UI", Verdana, sans-serif' },
-] as const
-
-type DevotionalFontStyleId = typeof DEVOTIONAL_FONT_STYLES[number]['id']
+type DevotionalFontStyleId = ReadingFontStyleId
 
 function getDefaultDevotionalFontStyle(): DevotionalFontStyleId {
-  try {
-    const v = localStorage.getItem('devotional_font_style') as DevotionalFontStyleId | null
-    return DEVOTIONAL_FONT_STYLES.some((s) => s.id === v) ? (v as DevotionalFontStyleId) : 'serif'
-  } catch { return 'serif' }
+  return getSavedFontStyle('devotional_font_style', 'serif')
 }
 function getDefaultDevotionalFontSize(): number {
   try {
@@ -715,7 +712,7 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
     try { localStorage.setItem('devotional_font_style', fontStyle) } catch {}
   }, [fontStyle])
 
-  const readingFontFamily = DEVOTIONAL_FONT_STYLES.find((s) => s.id === fontStyle)?.family || DEVOTIONAL_FONT_STYLES[0].family
+  const readingFontFamily = getFontFamily(fontStyle)
 
   useEffect(() => {
     setVersion('KJV')
@@ -858,13 +855,13 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-primary uppercase tracking-wider">Font style</p>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {DEVOTIONAL_FONT_STYLES.map((s) => (
+                    {READING_FONT_STYLES.map((s) => (
                       <Button
                         key={s.id}
                         type="button"
                         size="sm"
                         variant={fontStyle === s.id ? 'default' : 'outline'}
-                        className="h-8 text-xs"
+                        className="h-8 text-[11px] px-1.5 truncate"
                         onClick={() => setFontStyle(s.id)}
                         style={{ fontFamily: s.family }}
                       >

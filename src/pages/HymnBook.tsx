@@ -14,23 +14,21 @@ import { HYMN_CATEGORIES } from '@/types/devotional-hymn'
 import { getFavoriteHymnIds, getHymns, updateHymn } from '@/data/mockDevotionalHymnData'
 import { CMS_ID_PREFIX, cmsHymnToPageHymn, loadPublishedHymns } from '@/lib/contentSource'
 import { cn } from '@/lib/utils'
+import {
+  READING_FONT_STYLES,
+  getFontFamily,
+  getSavedFontStyle,
+  type ReadingFontStyleId,
+} from '@/lib/readingFonts'
 import type { Hymn } from '@/types/devotional-hymn'
 
 const RECENT_HYMNS_KEY = 'hymn_recent_ids'
 const PLAYLIST_HYMNS_KEY = 'hymn_playlist_ids'
 
-const HYMN_FONT_STYLES = [
-  { id: 'serif', label: 'Serif', family: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif' },
-  { id: 'sans', label: 'Sans', family: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' },
-  { id: 'readable', label: 'Readable', family: '"Trebuchet MS", "Segoe UI", Verdana, sans-serif' },
-] as const
-type HymnFontStyleId = typeof HYMN_FONT_STYLES[number]['id']
+type HymnFontStyleId = ReadingFontStyleId
 
 function getDefaultHymnFontStyle(): HymnFontStyleId {
-  try {
-    const v = localStorage.getItem('hymn_font_style') as HymnFontStyleId | null
-    return HYMN_FONT_STYLES.some((s) => s.id === v) ? (v as HymnFontStyleId) : 'serif'
-  } catch { return 'serif' }
+  return getSavedFontStyle('hymn_font_style', 'serif')
 }
 function getDefaultHymnFontSize(): number {
   try {
@@ -420,7 +418,7 @@ function HymnDetail({ hymn, inPlaylist, onClose, onFavorite, onTogglePlaylist, a
   useEffect(() => { try { localStorage.setItem('hymn_font_size', String(fontSize)) } catch {} }, [fontSize])
   useEffect(() => { try { localStorage.setItem('hymn_font_style', fontStyle) } catch {} }, [fontStyle])
 
-  const fontFamily = HYMN_FONT_STYLES.find((s) => s.id === fontStyle)?.family || HYMN_FONT_STYLES[0].family
+  const fontFamily = getFontFamily(fontStyle)
 
   const idx = allHymns.findIndex(h => h.id === hymn.id)
   const prevHymn = allHymns[(idx - 1 + allHymns.length) % allHymns.length]
@@ -515,8 +513,8 @@ function HymnDetail({ hymn, inPlaylist, onClose, onFavorite, onTogglePlaylist, a
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-primary uppercase tracking-wider">Font style</p>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {HYMN_FONT_STYLES.map((s) => (
-                      <Button key={s.id} type="button" size="sm" variant={fontStyle === s.id ? 'default' : 'outline'} className="h-8 text-xs" onClick={() => setFontStyle(s.id)} style={{ fontFamily: s.family }}>
+                    {READING_FONT_STYLES.map((s) => (
+                      <Button key={s.id} type="button" size="sm" variant={fontStyle === s.id ? 'default' : 'outline'} className="h-8 text-[11px] px-1.5 truncate" onClick={() => setFontStyle(s.id)} style={{ fontFamily: s.family }}>
                         {s.label}
                       </Button>
                     ))}
