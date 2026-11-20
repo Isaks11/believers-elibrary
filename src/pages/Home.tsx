@@ -256,7 +256,7 @@ export function Home() {
 
       {/* Quick Stats (derived from real activity) */}
       <div className="grid grid-cols-2 gap-4">
-        <Card className="bg-secondary border-none">
+        <Card className="bg-primary/10 border-none">
           <CardContent className="p-4 flex flex-col items-center text-center space-y-1">
             <TrendingUp className="w-6 h-6 text-primary" />
             <span className="text-2xl font-bold text-primary">
