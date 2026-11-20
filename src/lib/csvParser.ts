@@ -125,6 +125,21 @@ function normalizeOfflinePolicy(raw: string): 'online_only' | 'optional' | 'esse
 /**
  * Parses devotional CSV text and validates each row according to the CMS schema.
  */
+export function normalizeParagraphText(raw: string): string {
+  return raw
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n[ \t]*\n+/g, '\n\n')
+    .trim();
+}
+
+export function normalizeTranslation(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'none') return null;
+  return trimmed;
+}
+
 export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
   const grid = parseCsvToGrid(csvText);
   if (grid.length === 0) {
@@ -172,9 +187,10 @@ export function parseDevotionalsCsv(csvText: string): ParseDevotionalsResult {
     const rawDate = (row[dateIdx] || '').trim();
     const verseRef = (verseRefIdx !== -1 ? row[verseRefIdx] : '') || '';
     const verseText = (verseTextIdx !== -1 ? row[verseTextIdx] : '') || null;
-    const body = (row[bodyIdx] || '').trim();
-    const prayer = (prayerIdx !== -1 ? row[prayerIdx] : '') || null;
-    const translation = (translationIdx !== -1 ? row[translationIdx] : '') || null;
+    const body = normalizeParagraphText(row[bodyIdx] || '');
+    const rawPrayer = (prayerIdx !== -1 ? row[prayerIdx] : '') || '';
+    const prayer = rawPrayer.trim() ? normalizeParagraphText(rawPrayer) : null;
+    const translation = normalizeTranslation((translationIdx !== -1 ? row[translationIdx] : '') || '');
     const category = (categoryIdx !== -1 ? row[categoryIdx] : '') || null;
     const tagsRaw = (tagsIdx !== -1 ? row[tagsIdx] : '') || '';
     const author = (authorIdx !== -1 ? row[authorIdx] : '') || null;

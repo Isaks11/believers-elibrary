@@ -556,8 +556,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!user) return { ok: false, message: 'Not signed in.' };
 
       const nextName = patch.name?.trim() || user.name;
-      // Only allow local role switching when running in device-local mode (never override Supabase RLS role)
-      const nextRole = !isRemote && patch.role ? patch.role : user.role;
+      // Guests always remain ordinary users; never allow self-escalation via profile settings.
+      const nextRole: UserRole = user.isGuest ? 'user' : user.role;
 
       if (isRemote && supabase) {
         try {
@@ -570,10 +570,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { ok: false, message: 'Could not update profile on server.' };
         }
       } else if (!user.isGuest) {
-        // Name via the registry helper; the (possibly 5-role) role is written
-        // raw so the Users & Roles panel / local switcher round-trips.
         updateRegisteredUserProfile(user.id, { name: nextName });
-        writeLocalRegistryRole(user.id, nextRole);
       }
 
       const updatedUser: User = { ...user, name: nextName, role: nextRole };

@@ -84,6 +84,7 @@ export interface HymnRecord extends BaseContentRecord {
   hymn_category: string | null;
   meter: string | null;
   composer: string | null;
+  tune?: string | null;
 }
 
 export interface VideoRecord extends BaseContentRecord {

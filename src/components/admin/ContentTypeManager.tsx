@@ -51,6 +51,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { ContentEditorDialog } from '@/components/admin/ContentEditorDialog'
 import { BulkDevotionalDialog } from '@/components/admin/BulkDevotionalDialog'
 import { BulkHymnDialog } from '@/components/admin/BulkHymnDialog'
+import { splitHymnTitleAndTune } from '@/lib/hymnUtils'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 10
@@ -412,12 +413,22 @@ export function ContentTypeManager({ type, onChanged }: ContentTypeManagerProps)
           const deleteAllowed = row.status !== 'published'
           const showMenu = canEdit || canPublish || canSchedule || canArchive || canDelete
 
+          const displayTitle =
+            type === 'hymn'
+              ? splitHymnTitleAndTune(row.title, (row as any).tune).title
+              : row.title
+
           return (
             <Card key={row.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
               <CardContent className="p-3 flex items-center gap-2.5">
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <h4 className="text-xs font-bold text-primary truncate max-w-[65%]">{row.title}</h4>
+                    {type === 'hymn' && typeof (row as any).number === 'number' && (row as any).number > 0 && (
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono bg-primary/10 text-primary border-primary/20">
+                        #{(row as any).number}
+                      </Badge>
+                    )}
+                    <h4 className="text-xs font-bold text-primary truncate max-w-[65%]">{displayTitle}</h4>
                     <StatusBadge row={row} />
                     {type === 'devotional' && (row as any).devotional_date && (
                       <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono bg-secondary/50">

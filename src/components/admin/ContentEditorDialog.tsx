@@ -26,6 +26,7 @@ import {
   updateContent,
   setStatus,
   validateContent,
+  listContent,
   storageFeedback,
 } from '@/lib/contentAdmin'
 import {
@@ -35,9 +36,15 @@ import {
   type ContentStatus,
   type ContentDraft,
   type ContentRecordMap,
+  type HymnRecord,
   type OfflinePolicy,
   type PlanStep,
 } from '@/types/content'
+import {
+  findHymnNumberConflict,
+  getNextAvailableHymnNumber,
+  splitHymnTitleAndTune,
+} from '@/lib/hymnUtils'
 import { can } from '@/lib/permissions'
 import { useAuth } from '@/contexts/AuthContext'
 import { RevisionHistoryDialog } from '@/components/admin/RevisionHistoryDialog'
@@ -74,6 +81,7 @@ type FormState = {
   public_domain: boolean
   meter: string
   composer: string
+  tune: string
   video_url: string
   thumbnail_url: string
   speaker: string
@@ -163,6 +171,7 @@ function emptyForm(): FormState {
     public_domain: true,
     meter: '',
     composer: '',
+    tune: '',
     video_url: '',
     thumbnail_url: '',
     speaker: '',
@@ -184,8 +193,12 @@ function formFromRecord(record: AnyContentRecord | null): FormState {
   const row = record as unknown as Record<string, unknown>
   const lyrics = asString(row.lyrics)
   const hymn = parseHymnLyrics(lyrics)
+  const isHymnRecord = typeof row.lyrics === 'string' && ('number' in row || 'composer' in row || 'hymn_category' in row)
+  const parsedTitleAndTune = isHymnRecord
+    ? splitHymnTitleAndTune(asString(row.title), asString(row.tune))
+    : { title: asString(row.title), tune: null }
   return {
-    title: asString(row.title),
+    title: parsedTitleAndTune.title,
     body: asString(row.body),
     verse_text: asString(row.verse_text),
     verse_ref: asString(row.verse_ref),
@@ -203,6 +216,7 @@ function formFromRecord(record: AnyContentRecord | null): FormState {
     public_domain: row.public_domain !== false,
     meter: asString(row.meter),
     composer: asString(row.composer),
+    tune: parsedTitleAndTune.tune || asString(row.tune),
     video_url: asString(row.video_url),
     thumbnail_url: asString(row.thumbnail_url),
     speaker: asString(row.speaker),
@@ -241,7 +255,7 @@ function buildDraft(type: ContentEntityType, form: FormState): Record<string, un
         body: form.body,
         verse_text: form.verse_text.trim() || null,
         verse_ref: form.verse_ref.trim(),
-        translation: form.translation.trim() || null,
+        translation: form.translation.trim() && form.translation.trim() !== 'none' ? form.translation.trim() : null,
         devotional_date: form.devotional_date || null,
         prayer: form.prayer.trim() || null,
       }
@@ -264,6 +278,7 @@ function buildDraft(type: ContentEntityType, form: FormState): Record<string, un
         public_domain: form.public_domain,
         meter: form.meter.trim() || null,
         composer: form.composer.trim() || null,
+        tune: form.tune.trim() || null,
         hymn_category: trimmedCategory || null,
       }
     }
@@ -321,6 +336,31 @@ export function ContentEditorDialog({
   const [currentStatus, setCurrentStatus] = useState<ContentStatus>(record?.status ?? 'draft')
   const [previewOpen, setPreviewOpen] = useState(false)
   const [revisionsOpen, setRevisionsOpen] = useState(false)
+  const [existingHymns, setExistingHymns] = useState<HymnRecord[]>([])
+
+  useEffect(() => {
+    if (!open || type !== 'hymn') return
+    let cancelled = false
+    listContent('hymn', { pageSize: 1000 })
+      .then((res) => {
+        if (!cancelled) setExistingHymns(res.rows)
+      })
+      .catch(() => {
+        if (!cancelled) setExistingHymns([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, type])
+
+  const parsedHymnNumber =
+    type === 'hymn' && form.number.trim() ? Number(form.number.trim()) : null
+  const hymnNumberConflict =
+    type === 'hymn' && parsedHymnNumber !== null && Number.isFinite(parsedHymnNumber)
+      ? findHymnNumberConflict(parsedHymnNumber, existingHymns, record?.id ?? null)
+      : null
+  const nextAvailableHymnNumber =
+    type === 'hymn' ? getNextAvailableHymnNumber(existingHymns) : 1
 
   // Re-initialise only when the dialog opens or a different record is loaded —
   // list refreshes must not clobber what the author is typing.
@@ -350,6 +390,21 @@ export function ContentEditorDialog({
   const actor = { id: user?.id ?? null, role: role ?? 'user' }
 
   const saveContent = useCallback(async (): Promise<AnyContentRecord | null> => {
+    if (type === 'hymn' && form.number.trim()) {
+      const numVal = Number(form.number.trim())
+      if (!Number.isInteger(numVal) || numVal <= 0) {
+        const msg = 'Hymn number must be a positive whole number.'
+        setErrors([msg])
+        toast.error(msg)
+        return null
+      }
+      if (hymnNumberConflict) {
+        const msg = `Hymn #${numVal} is already used by "${hymnNumberConflict.title}" (${hymnNumberConflict.source === 'built-in' ? 'Built-in' : 'Library'}). Please choose another number (e.g. #${nextAvailableHymnNumber}).`
+        setErrors([msg])
+        toast.error(msg)
+        return null
+      }
+    }
     const draft = buildDraft(type, form) as ContentDraft<ContentRecordMap[ContentEntityType]>
     // Early, field-level feedback (create/update run the same validation).
     const preErrors = validateContent(type, draft)
@@ -383,7 +438,7 @@ export function ContentEditorDialog({
     toast[feedback.level](feedback.message)
     return res.record ?? null
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, form, record, savedVersion, onChanged, actor.role, actor.id])
+  }, [type, form, record, savedVersion, onChanged, actor.role, actor.id, hymnNumberConflict, nextAvailableHymnNumber])
 
   /** Resolves the id to mutate: the existing record, or the just-created one. */
   const resolveId = (fresh: AnyContentRecord | null): string | null =>
@@ -586,13 +641,14 @@ export function ContentEditorDialog({
                   <div>
                     <FieldLabel>Primary Translation</FieldLabel>
                     <Select
-                      value={form.translation || 'KJV'}
+                      value={form.translation || 'none'}
                       onValueChange={(val) => set('translation', val)}
                     >
                       <SelectTrigger className="h-9 text-xs">
                         <SelectValue placeholder="Select translation" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">None (no translation)</SelectItem>
                         <SelectItem value="KJV">KJV (King James Version)</SelectItem>
                         <SelectItem value="WEB">WEB (World English Bible)</SelectItem>
                         <SelectItem value="ASV">ASV (American Standard Version)</SelectItem>
@@ -695,18 +751,53 @@ export function ContentEditorDialog({
               <>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <FieldLabel>Hymn Number</FieldLabel>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase">Hymn Number</span>
+                      <button
+                        type="button"
+                        onClick={() => set('number', String(nextAvailableHymnNumber))}
+                        className="text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        Use #{nextAvailableHymnNumber}
+                      </button>
+                    </div>
                     <Input
                       type="number"
+                      min={1}
                       value={form.number}
                       onChange={(e) => set('number', e.target.value)}
-                      placeholder="12"
+                      placeholder={String(nextAvailableHymnNumber)}
+                      className={cn(hymnNumberConflict && 'border-red-500 focus-visible:ring-red-500')}
                     />
                   </div>
                   <div>
                     <FieldLabel>Meter</FieldLabel>
                     <Input value={form.meter} onChange={(e) => set('meter', e.target.value)} placeholder="C.M." />
                   </div>
+                </div>
+                {hymnNumberConflict && (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                    <div>
+                      <strong>Number #{form.number.trim()} is already in use</strong> by{' '}
+                      <span className="font-semibold">"{hymnNumberConflict.title}"</span> ({hymnNumberConflict.source === 'built-in' ? 'Built-in' : 'Library'}). Choose another number, or tap{' '}
+                      <button
+                        type="button"
+                        onClick={() => set('number', String(nextAvailableHymnNumber))}
+                        className="underline font-bold"
+                      >
+                        Use #{nextAvailableHymnNumber}
+                      </button>.
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <FieldLabel>Tune (optional)</FieldLabel>
+                  <Input
+                    value={form.tune}
+                    onChange={(e) => set('tune', e.target.value)}
+                    placeholder="e.g. New Britain (AU 2; AA 18)"
+                  />
                 </div>
 
                 <div className="space-y-2.5 p-3 rounded-xl bg-secondary/30 border border-border/50">

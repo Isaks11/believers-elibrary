@@ -158,6 +158,14 @@ self.addEventListener('push', (event) => {
   );
 });
 
+function offlineFallbackResponse() {
+  return new Response('Offline', {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
@@ -179,7 +187,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match(request))
+        .catch(() => caches.match(request).then((cached) => cached || offlineFallbackResponse()))
     );
     return;
   }
@@ -196,7 +204,10 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() =>
-          caches.match('/index.html').then((cached) => cached || caches.match('/'))
+          caches
+            .match('/index.html')
+            .then((cached) => cached || caches.match('/'))
+            .then((cached) => cached || offlineFallbackResponse())
         )
     );
     return;
@@ -214,7 +225,7 @@ self.addEventListener('fetch', (event) => {
             }
             return response;
           })
-          .catch(() => cached);
+          .catch(() => cached || offlineFallbackResponse());
 
         return cached || networkFetch;
       })
@@ -235,7 +246,7 @@ self.addEventListener('fetch', (event) => {
             }
             return response;
           })
-          .catch(() => cached);
+          .catch(() => cached || offlineFallbackResponse());
         return cached || networkFetch;
       })
     );

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth, UserRole } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/permissions';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,7 +96,6 @@ export function Profile() {
   const [activeDialog, setActiveDialog] = useState<'settings' | 'history' | 'bookmarks' | 'backup' | 'legal' | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
   const [nameInput, setNameInput] = useState(user?.name || '');
-  const [roleInput, setRoleInput] = useState<UserRole>(user?.role || 'user');
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
 
@@ -129,7 +128,6 @@ export function Profile() {
 
   const openSettings = () => {
     setNameInput(user?.name || '');
-    setRoleInput(user?.role || 'user');
     setConfirmDeleteAccount(false);
     setActiveDialog('settings');
   };
@@ -195,7 +193,7 @@ export function Profile() {
       toast.error('Display name cannot be empty');
       return;
     }
-    const res = await updateProfile({ name: nameInput.trim(), role: roleInput });
+    const res = await updateProfile({ name: nameInput.trim() });
     if (!res.ok) {
       toast.error(res.message || 'Could not update profile');
       return;
@@ -464,35 +462,6 @@ export function Profile() {
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               Your profile picture is saved only on this device. Tap the camera icon on your profile to update it.
             </p>
-
-            {!isRemote && (
-              <div className="space-y-2 p-3 rounded-xl bg-secondary/40 border border-border/50">
-                <label className="text-xs font-semibold text-primary uppercase block">
-                  Local Access Mode
-                </label>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  For testing on this device, you can switch roles used in the admin area. Signed-in account roles are managed securely by your account.
-                </p>
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  {(['user', 'contributor', 'editor', 'admin'] as UserRole[]).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setRoleInput(r)}
-                      title={ROLE_LABELS[r]}
-                      className={cn(
-                        'py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase transition-all',
-                        roleInput === r
-                          ? 'bg-primary text-primary-foreground shadow'
-                          : 'bg-card text-muted-foreground border'
-                      )}
-                    >
-                      {ROLE_LABELS[r]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/60 space-y-2">
               <p className="text-xs font-bold text-rose-800 flex items-center gap-1.5">

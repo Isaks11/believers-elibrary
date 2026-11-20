@@ -206,8 +206,8 @@ ${entry.bibleVersions[version] ?? ''}` })
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-accent uppercase tracking-widest">Daily Reading</h3>
           <div className="space-y-4 text-foreground/90 font-serif leading-relaxed" style={{ fontSize }}>
-            {entry.mainBody.split(String.fromCharCode(10, 10)).map((para, i) => (
-              <p key={i} className={i > 0 ? "mt-4" : ""}>{para}</p>
+            {entry.mainBody.split(/\n\s*\n/).map((para, i) => (
+              <p key={i} className={cn('whitespace-pre-line', i > 0 && 'mt-4')}>{para.trim()}</p>
             ))}
           </div>
           <div className="rounded-xl bg-primary/5 border border-primary/10 p-4">

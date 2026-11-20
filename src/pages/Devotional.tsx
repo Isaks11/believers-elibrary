@@ -966,8 +966,8 @@ function DevotionalDetail({ entry, onBack, onToggleComplete, onToggleBookmark }:
         <section className="space-y-4">
           <h3 className="text-xs font-bold text-accent uppercase tracking-widest">Daily Reading</h3>
           <div className="space-y-4 text-foreground/90 leading-relaxed" style={{ fontSize, fontFamily: readingFontFamily }}>
-            {entry.mainBody.split(String.fromCharCode(10, 10)).map((para, i) => (
-              <p key={i}>{para}</p>
+            {entry.mainBody.split(/\n\s*\n/).map((para, i) => (
+              <p key={i} className="whitespace-pre-line">{para.trim()}</p>
             ))}
           </div>
           {(entry.keyThought?.trim() || entry.prayer?.trim()) && (

@@ -43,6 +43,7 @@ import type { ReadingPlan, ReadingPlanDay } from '@/data/readingPlans'
 import type { LibraryItem } from '@/types/library-news'
 import { parseBibleRef } from '@/lib/bibleService'
 import { loadDailyVerseFromSettings } from '@/lib/dailyVerses'
+import { splitHymnTitleAndTune } from '@/lib/hymnUtils'
 
 /** In-memory cache TTL — five minutes. */
 export const CONTENT_SOURCE_TTL_MS = 5 * 60 * 1000
@@ -322,11 +323,12 @@ export function cmsHymnToPageHymn(record: HymnRecord): Hymn {
     .map((stanza) => stanza.trim())
     .filter(Boolean)
   const favorites = new Set(getFavoriteHymnIds())
+  const { title, tune } = splitHymnTitleAndTune(record.title, record.tune)
 
   const hymn: Hymn = {
     id,
     number: typeof record.number === 'number' && Number.isFinite(record.number) ? record.number : 0,
-    title: record.title,
+    title,
     category:
       (record.hymn_category && record.hymn_category.trim()) ||
       (record.category && record.category.trim()) ||
@@ -338,6 +340,7 @@ export function cmsHymnToPageHymn(record: HymnRecord): Hymn {
     stanzas: stanzas.length > 0 ? stanzas : [lyrics],
     isFavorite: favorites.has(id),
   }
+  if (tune) hymn.tuneName = tune
   if (record.meter) hymn.meter = record.meter
   if (record.audio_url) hymn.audioUrl = record.audio_url
   return hymn

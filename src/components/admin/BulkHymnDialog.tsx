@@ -16,7 +16,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { parseCsvToGrid } from '@/lib/csvParser'
-import { bulkCreateContent, storageFeedback } from '@/lib/contentAdmin'
+import { bulkCreateContent, listContent, storageFeedback } from '@/lib/contentAdmin'
+import { findHymnNumberConflict, splitHymnTitleAndTune } from '@/lib/hymnUtils'
 import { useAuth } from '@/contexts/AuthContext'
 import type { ContentDraft, HymnRecord } from '@/types/content'
 
@@ -32,6 +33,7 @@ interface ParsedHymnRow {
   lyrics: string
   category: string | null
   composer: string | null
+  tune: string | null
   meter: string | null
   language: string | null
   tags: string[]
@@ -62,6 +64,7 @@ function normalizeHeader(h: string): string {
   if (clean === 'name') return 'title'
   if (clean === 'text' || clean === 'words' || clean === 'verses') return 'lyrics'
   if (clean === 'author' || clean === 'writer') return 'composer'
+  if (clean === 'tune' || clean === 'tunename') return 'tune'
   if (clean === 'lang') return 'language'
   if (clean === 'tag' || clean === 'keywords') return 'tags'
   if (clean === 'audio' || clean === 'audiourl' || clean === 'audiofile') return 'audio_url'
@@ -162,7 +165,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
 
     setFileName(file.name)
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const text = e.target?.result as string
       if (!text) {
         toast.error('Uploaded file is empty')
@@ -175,6 +178,14 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         return
       }
 
+      let existingCmsHymns: HymnRecord[] = []
+      try {
+        const res = await listContent('hymn', { pageSize: 1000 })
+        existingCmsHymns = res.rows
+      } catch {
+        existingCmsHymns = []
+      }
+
       const headers = grid[0].map((h) => normalizeHeader(h.trim()))
       const idx = (name: string) => headers.indexOf(name)
       const numberIdx = idx('number')
@@ -182,6 +193,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
       const lyricsIdx = idx('lyrics')
       const categoryIdx = idx('category')
       const composerIdx = idx('composer')
+      const tuneIdx = idx('tune')
       const meterIdx = idx('meter')
       const languageIdx = idx('language')
       const tagsIdx = idx('tags')
@@ -196,13 +208,16 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
 
       const parsedValid: ParsedHymnRow[] = []
       const parsedErrors: { rowNumber: number; message: string }[] = []
+      const seenNumbers = new Map<number, { rowNum: number; title: string }>()
 
       for (let i = 1; i < grid.length; i++) {
         const row = grid[i]
         if (row.every((cell) => !cell?.trim())) continue
 
         const rowNum = i + 1
-        const title = (row[titleIdx] || '').trim()
+        const rawTitle = (row[titleIdx] || '').trim()
+        const rawTune = (tuneIdx !== -1 ? row[tuneIdx] : '')?.trim() || null
+        const { title, tune } = splitHymnTitleAndTune(rawTitle, rawTune)
         const lyrics = (row[lyricsIdx] || '').trim()
 
         if (!title) {
@@ -215,14 +230,40 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         }
 
         const numStr = numberIdx !== -1 ? (row[numberIdx] || '').trim() : ''
-        const hymnNumber = numStr ? parseInt(numStr, 10) : null
+        const parsedNum = numStr ? Number(numStr) : null
+        if (numStr && (!Number.isInteger(parsedNum) || (parsedNum ?? 0) <= 0)) {
+          parsedErrors.push({ rowNumber: rowNum, message: `Invalid hymn number "${numStr}". Must be a positive whole number.` })
+          continue
+        }
+
+        const hymnNumber = parsedNum != null && Number.isFinite(parsedNum) ? parsedNum : null
+        if (hymnNumber !== null) {
+          const conflict = findHymnNumberConflict(hymnNumber, existingCmsHymns)
+          if (conflict) {
+            parsedErrors.push({
+              rowNumber: rowNum,
+              message: `Hymn #${hymnNumber} is already used by "${conflict.title}" (${conflict.source === 'built-in' ? 'Built-in' : 'Library'})`,
+            })
+            continue
+          }
+          const csvDup = seenNumbers.get(hymnNumber)
+          if (csvDup) {
+            parsedErrors.push({
+              rowNumber: rowNum,
+              message: `Duplicate hymn #${hymnNumber} in CSV (already used on row ${csvDup.rowNum} by "${csvDup.title}")`,
+            })
+            continue
+          }
+          seenNumbers.set(hymnNumber, { rowNum, title })
+        }
 
         parsedValid.push({
-          number: hymnNumber != null && !Number.isNaN(hymnNumber) ? hymnNumber : null,
+          number: hymnNumber,
           title,
           lyrics,
           category: (categoryIdx !== -1 ? row[categoryIdx] : '')?.trim() || null,
           composer: (composerIdx !== -1 ? row[composerIdx] : '')?.trim() || null,
+          tune,
           meter: (meterIdx !== -1 ? row[meterIdx] : '')?.trim() || null,
           language: (languageIdx !== -1 ? row[languageIdx] : '')?.trim() || 'English',
           tags: parseTags((tagsIdx !== -1 ? row[tagsIdx] : '') || ''),
@@ -270,6 +311,7 @@ export function BulkHymnDialog({ open, onClose, onChanged }: BulkHymnDialogProps
         lyrics: row.lyrics,
         category: row.category,
         composer: row.composer,
+        tune: row.tune,
         meter: row.meter,
         language: row.language || 'English',
         tags: row.tags,

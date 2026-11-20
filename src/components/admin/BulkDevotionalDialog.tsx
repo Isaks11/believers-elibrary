@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Upload,
   Download,
@@ -36,6 +37,7 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
   const [errors, setErrors] = useState<{ rowNumber: number; message: string }[]>([])
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [defaultTranslation, setDefaultTranslation] = useState<string>('none')
 
   const actor = { id: user?.id ?? null, role: user?.role ?? 'user' }
 
@@ -109,13 +111,14 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
 
     setImporting(true)
     try {
+      const fallbackTranslation = defaultTranslation === 'none' ? null : defaultTranslation
       const drafts = validRows.map((row) => ({
         title: row.title,
         body: row.body,
         verse_ref: row.verse_ref,
         verse_text: row.verse_text,
         prayer: row.prayer || null,
-        translation: row.translation || 'KJV',
+        translation: row.translation ?? fallbackTranslation,
         devotional_date: row.devotional_date,
         category: row.category,
         tags: row.tags,
@@ -181,13 +184,33 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
                 </div>
                 <ul className="text-xs text-muted-foreground space-y-1 leading-relaxed">
                   <li><strong>Required:</strong> date (YYYY-MM-DD), title, verse_ref, body</li>
-                  <li><strong>Manual prayer:</strong> use the <code>prayer</code> column to upload the devotional prayer</li>
+                  <li><strong>Paragraphs:</strong> leave a blank line inside quoted <code>body</code> cells (or use <code>\n\n</code>)</li>
+                  <li><strong>Translation:</strong> set <code>none</code> or leave blank for no translation</li>
                   <li><strong>Tags:</strong> separate with <code>;</code> or <code>|</code></li>
-                  <li><strong>offline_policy:</strong> online_only, optional, or essential</li>
-                  <li><strong>status:</strong> draft or published</li>
+                  <li><strong>status:</strong> draft or published • <strong>offline:</strong> online_only, optional, essential</li>
                 </ul>
               </CardContent>
             </Card>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-secondary/30 border border-border/50">
+            <div>
+              <p className="text-xs font-semibold text-primary">Default Bible Translation</p>
+              <p className="text-[11px] text-muted-foreground">Used when a CSV row leaves the translation column blank.</p>
+            </div>
+            <Select value={defaultTranslation} onValueChange={setDefaultTranslation}>
+              <SelectTrigger className="h-8 w-full sm:w-48 text-xs bg-background">
+                <SelectValue placeholder="Select translation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None (no translation)</SelectItem>
+                <SelectItem value="KJV">KJV (King James Version)</SelectItem>
+                <SelectItem value="WEB">WEB (World English Bible)</SelectItem>
+                <SelectItem value="ASV">ASV (American Standard Version)</SelectItem>
+                <SelectItem value="BBE">BBE (Bible in Basic English)</SelectItem>
+                <SelectItem value="ESV">ESV (English Standard Version)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {!fileName ? (
@@ -263,10 +286,14 @@ export function BulkDevotionalDialog({ open, onClose, onChanged }: BulkDevotiona
                           {row.status}
                         </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground line-clamp-2">{row.body}</p>
+                      <p className="text-[11px] text-muted-foreground line-clamp-3 whitespace-pre-line">{row.body}</p>
                       {row.prayer && <p className="text-[11px] text-primary/80 line-clamp-1"><strong>Prayer:</strong> {row.prayer}</p>}
                       <div className="flex flex-wrap gap-1">
-                        {row.translation && <Badge variant="outline" className="text-[10px] py-0">{row.translation}</Badge>}
+                        {(row.translation ?? (defaultTranslation === 'none' ? null : defaultTranslation)) && (
+                          <Badge variant="outline" className="text-[10px] py-0">
+                            {row.translation ?? defaultTranslation}
+                          </Badge>
+                        )}
                         {row.offline_policy && <Badge variant="outline" className="text-[10px] py-0">{row.offline_policy.replace('_', ' ')}</Badge>}
                         {row.tags.slice(0, 3).map((t) => <Badge key={t} variant="secondary" className="text-[10px] py-0">{t}</Badge>)}
                         {row.tags.length > 3 && <span className="text-[10px] text-muted-foreground">+{row.tags.length - 3}</span>}

@@ -118,7 +118,11 @@ export function HymnBook() {
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim()
-    return hymns.filter(h => {
+    const numberQuery = q.replace(/^(hymn\s*#?\s*|#)/i, '').trim()
+    const isNumericQuery = /^\d+$/.test(numberQuery)
+    const exactNum = isNumericQuery ? Number(numberQuery) : null
+
+    const matches = hymns.filter(h => {
       const inCategory =
         category === 'All' ||
         (category === 'Favorites' ? h.isFavorite : true) &&
@@ -129,12 +133,24 @@ export function HymnBook() {
               : category === 'All' || category === 'Favorites' ? true : h.category === category)
       const matchesQuery = !q ||
         h.title.toLowerCase().includes(q) ||
-        String(h.number).includes(q) ||
+        (h.tuneName ?? '').toLowerCase().includes(q) ||
+        (h.number > 0 && (isNumericQuery ? String(h.number).includes(numberQuery) : String(h.number).includes(q))) ||
         h.author.toLowerCase().includes(q) ||
         h.stanzas.some(s => s.toLowerCase().includes(q)) ||
         (h.chorus ?? '').toLowerCase().includes(q)
       return inCategory && matchesQuery
     })
+
+    if (exactNum !== null) {
+      matches.sort((a, b) => {
+        const aExact = a.number === exactNum ? 0 : 1
+        const bExact = b.number === exactNum ? 0 : 1
+        if (aExact !== bExact) return aExact - bExact
+        return a.number - b.number
+      })
+    }
+
+    return matches
   }, [hymns, category, query, playlistIds, recentIds])
 
   const toggleFavorite = (id: string) => {
@@ -255,6 +271,11 @@ export function HymnBook() {
                         <h3 className="font-bold text-primary truncate group-hover:text-primary/80 transition-colors">
                           {hymn.title}
                         </h3>
+                        {hymn.tuneName && (
+                          <p className="text-[11px] text-primary/75 truncate mt-0.5">
+                            <span className="font-semibold text-muted-foreground">Tune:</span> {hymn.tuneName}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground truncate">
                           {hymn.author}{hymn.meter ? ` • ${hymn.meter}` : ''} • {hymn.category}
                         </p>
@@ -366,7 +387,12 @@ function HymnDetail({ hymn, inPlaylist, onClose, onFavorite, onTogglePlaylist, a
     }
   }
 
-  const metaLine = [hymn.author, hymn.yearWritten ? String(hymn.yearWritten) : null, hymn.tuneName || null, hymn.meter ? `Meter: ${hymn.meter}` : null].filter(Boolean)
+  const metaLine = [
+    hymn.author,
+    hymn.yearWritten ? String(hymn.yearWritten) : null,
+    hymn.tuneName ? `Tune: ${hymn.tuneName}` : null,
+    hymn.meter ? `Meter: ${hymn.meter}` : null,
+  ].filter(Boolean)
 
   return (
     <motion.div
