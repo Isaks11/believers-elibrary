@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Flame,
@@ -20,6 +21,9 @@ import {
   PenLine,
   Target,
   Settings2,
+  Settings,
+  Type,
+  Monitor,
 } from 'lucide-react'
 import type { LibraryItem, UserStats, PrayerAlert } from '@/types/library-news'
 import { getUserStats, getLibraryItems, getPrayerAlerts, syncFaithDataFromServer } from '@/data/mockFaithData'
@@ -41,8 +45,26 @@ import {
   type SpiritualGoals,
   READING_PLANS,
   getReadingPlansProgress,
+  getDailyReminderPrefs,
+  saveDailyReminderPrefs,
 } from '@/data/readingPlans'
 import { getFavoriteHymnIds } from '@/data/mockDevotionalHymnData'
+import { ThemeSettings } from '@/components/settings/ThemeSettings'
+import {
+  READING_FONT_STYLES,
+  getFontFamily,
+  type ReadingFontStyleId,
+} from '@/lib/readingFonts'
+import {
+  getDeviceFontSize,
+  setDeviceFontSize,
+  getDeviceFontStyle,
+  setDeviceFontStyle,
+  getKeepScreenOn,
+  setKeepScreenOn,
+  isWakeLockSupported,
+} from '@/lib/devicePreferences'
+import { requestNotificationPermission } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 
@@ -70,6 +92,11 @@ export function UserDashboard() {
   const [hymnFavCount, setHymnFavCount] = useState(() => getFavoriteHymnIds().length)
   const [heroIndex, setHeroIndex] = useState(0)
   const [planProgress, setPlanProgress] = useState(() => getReadingPlansProgress())
+  const [showSettings, setShowSettings] = useState(false)
+  const [fontStyle, setFontStyle] = useState<ReadingFontStyleId>(() => getDeviceFontStyle())
+  const [fontSize, setFontSize] = useState<number>(() => getDeviceFontSize())
+  const [reminderPrefs, setReminderPrefs] = useState(() => getDailyReminderPrefs())
+  const [keepScreenOn, setKeepScreenOnState] = useState<boolean>(() => getKeepScreenOn())
 
   useEffect(() => {
     const id = window.setInterval(() => setHeroIndex((i) => (i + 1) % HERO_IMAGES.length), 8000)
@@ -178,10 +205,22 @@ export function UserDashboard() {
               <h1 className="text-2xl sm:text-3xl font-serif font-bold leading-tight">{greeting}, {user?.name || 'Friend'}</h1>
               <p className="text-sm text-white/85 leading-relaxed">Track your devotional consistency, prayers, reading, and spiritual growth.</p>
             </div>
-            <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-2 rounded-full border border-white/20 shrink-0">
-              <Flame className="w-4 h-4 text-orange-300 fill-orange-300" />
-              <span className="text-sm font-bold">{streak}</span>
-              <span className="text-xs text-white/85">day streak</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm px-3 py-2 rounded-full border border-white/20">
+                <Flame className="w-4 h-4 text-orange-300 fill-orange-300" />
+                <span className="text-sm font-bold">{streak}</span>
+                <span className="text-xs text-white/85">day streak</span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowSettings(true)}
+                className="h-9 rounded-full bg-white/20 hover:bg-white/30 text-white border border-white/25 backdrop-blur-sm gap-1.5"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline text-xs font-semibold">Settings</span>
+              </Button>
             </div>
           </div>
 
@@ -352,6 +391,157 @@ export function UserDashboard() {
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowGoals(false)}>Cancel</Button>
               <Button onClick={saveGoals}>Save Goals</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="max-w-md rounded-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-serif text-primary">
+              <Settings className="w-5 h-5" />
+              Settings
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 pt-1">
+            <p className="text-[11px] text-muted-foreground">
+              All preferences below are saved locally on this device.
+            </p>
+
+            {/* Font Style & Size */}
+            <div className="space-y-3 p-3.5 rounded-xl bg-secondary/25 border border-border/50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase text-primary flex items-center gap-1.5">
+                  <Type className="w-3.5 h-3.5" /> Reading Font
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => {
+                      const next = Math.max(14, fontSize - 1)
+                      setFontSize(next)
+                      setDeviceFontSize(next)
+                    }}
+                  >
+                    A-
+                  </Button>
+                  <span className="text-xs font-semibold w-10 text-center tabular-nums">{fontSize}px</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => {
+                      const next = Math.min(26, fontSize + 1)
+                      setFontSize(next)
+                      setDeviceFontSize(next)
+                    }}
+                  >
+                    A+
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {READING_FONT_STYLES.map((s) => (
+                  <Button
+                    key={s.id}
+                    type="button"
+                    size="sm"
+                    variant={fontStyle === s.id ? 'default' : 'outline'}
+                    className="h-8 text-[11px] px-1.5 truncate"
+                    style={{ fontFamily: s.family }}
+                    onClick={() => {
+                      setFontStyle(s.id)
+                      setDeviceFontStyle(s.id)
+                    }}
+                  >
+                    {s.label}
+                  </Button>
+                ))}
+              </div>
+              <p
+                className="text-muted-foreground leading-relaxed p-2.5 rounded-lg bg-background/80 border border-border/40"
+                style={{ fontFamily: getFontFamily(fontStyle), fontSize: Math.min(20, fontSize) }}
+              >
+                Thy word is a lamp unto my feet, and a light unto my path.
+              </p>
+            </div>
+
+            {/* Theme Color & Mode */}
+            <ThemeSettings />
+
+            {/* Daily Reminder */}
+            <div className="space-y-2.5 p-3.5 rounded-xl bg-secondary/25 border border-border/50">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase text-primary flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5" /> Daily Reminder
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Receive a daily reading &amp; prayer reminder on this device.
+                  </p>
+                </div>
+                <Switch
+                  checked={reminderPrefs.enabled}
+                  onCheckedChange={async (checked) => {
+                    if (checked) {
+                      const perm = await requestNotificationPermission()
+                      if (perm === 'denied') {
+                        toast.error('Notifications are blocked in your browser settings')
+                      }
+                    }
+                    const next = { ...reminderPrefs, enabled: checked }
+                    setReminderPrefs(next)
+                    saveDailyReminderPrefs(next)
+                    toast.success(checked ? 'Daily reminder enabled' : 'Daily reminder paused')
+                  }}
+                />
+              </div>
+              {reminderPrefs.enabled && (
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <span className="text-xs text-muted-foreground">Reminder time</span>
+                  <Input
+                    type="time"
+                    value={reminderPrefs.time}
+                    onChange={(e) => {
+                      const next = { ...reminderPrefs, time: e.target.value || '08:00' }
+                      setReminderPrefs(next)
+                      saveDailyReminderPrefs(next)
+                    }}
+                    className="h-8 w-32 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Keep Screen On */}
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-secondary/25 border border-border/50">
+              <div>
+                <p className="text-xs font-bold uppercase text-primary flex items-center gap-1.5">
+                  <Monitor className="w-3.5 h-3.5" /> Keep Screen On
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {isWakeLockSupported()
+                    ? 'Prevent your screen from sleeping while reading.'
+                    : 'Saved locally (your browser may limit screen wake lock).'}
+                </p>
+              </div>
+              <Switch
+                checked={keepScreenOn}
+                onCheckedChange={(checked) => {
+                  setKeepScreenOnState(checked)
+                  setKeepScreenOn(checked)
+                  toast.success(checked ? 'Screen will stay awake while reading' : 'Screen sleep restored')
+                }}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setShowSettings(false)}>Done</Button>
             </div>
           </div>
         </DialogContent>

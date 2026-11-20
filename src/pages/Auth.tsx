@@ -1,12 +1,14 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { LogIn, UserPlus, Ghost, Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { LogIn, UserPlus, Ghost, Eye, EyeOff, Mail, Lock, User, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { AppIcon } from '@/components/common/AppIcon';
+import { getCachedPrivacySettings, loadPrivacySettings, type PrivacySettings } from '@/lib/privacySettings';
 
 export function Auth() {
   const { login } = useAuth();
@@ -17,6 +19,19 @@ export function Auth() {
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [privacy, setPrivacy] = useState<PrivacySettings>(() => getCachedPrivacySettings());
+
+  useEffect(() => {
+    let cancelled = false;
+    loadPrivacySettings().then((s) => {
+      if (!cancelled) setPrivacy(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +41,10 @@ export function Auth() {
     }
     if (view === 'signup' && !name.trim()) {
       toast.error('Please enter your full name');
+      return;
+    }
+    if (view === 'signup' && !acceptedPrivacy) {
+      toast.error('Please read and accept the Privacy Terms to create an account');
       return;
     }
     if (password.length < 6) {
@@ -45,6 +64,13 @@ export function Auth() {
       if (!res.ok) {
         toast.error(res.message || 'Authentication failed');
         return;
+      }
+      if (view === 'signup') {
+        try {
+          localStorage.setItem('believers_privacy_accepted_at', new Date().toISOString());
+        } catch {
+          /* ignore */
+        }
       }
       toast.success(view === 'signin' ? 'Welcome back!' : 'Account created! Welcome to Believers e-Library.');
       navigate('/dashboard');
@@ -170,6 +196,29 @@ export function Auth() {
                   </div>
                 </div>
 
+                {view === 'signup' && (
+                  <div className="flex items-start gap-2.5 pt-1">
+                    <input
+                      id="accept-privacy"
+                      type="checkbox"
+                      checked={acceptedPrivacy}
+                      onChange={(e) => setAcceptedPrivacy(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/30 cursor-pointer"
+                    />
+                    <label htmlFor="accept-privacy" className="text-xs text-slate-600 leading-relaxed cursor-pointer">
+                      I have read and accept the{' '}
+                      <button
+                        type="button"
+                        onClick={() => setPrivacyOpen(true)}
+                        className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80"
+                      >
+                        Privacy Terms
+                      </button>
+                      .
+                    </label>
+                  </div>
+                )}
+
                 <Button type="submit" disabled={submitting} className="w-full h-11 rounded-xl font-semibold text-sm mt-1">
                   {view === 'signin' ? <LogIn className="mr-2 w-4 h-4" /> : <UserPlus className="mr-2 w-4 h-4" />}
                   {submitting ? 'Please wait…' : view === 'signin' ? 'Sign In' : 'Create Account'}
@@ -203,6 +252,35 @@ export function Auth() {
           </p>
         </div>
       </div>
+
+      <Dialog open={privacyOpen} onOpenChange={setPrivacyOpen}>
+        <DialogContent className="max-w-md rounded-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-serif text-primary">
+              <ShieldCheck className="w-5 h-5" />
+              {privacy.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto pr-1 text-xs sm:text-sm text-muted-foreground leading-relaxed whitespace-pre-line flex-1">
+            {privacy.content}
+          </div>
+          <DialogFooter className="gap-2 pt-2 border-t border-border/40">
+            <Button type="button" variant="outline" size="sm" onClick={() => setPrivacyOpen(false)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setAcceptedPrivacy(true);
+                setPrivacyOpen(false);
+              }}
+            >
+              Accept &amp; Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

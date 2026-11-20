@@ -10,6 +10,7 @@ import { syncPersonalJournalFromServer } from '@/data/journalData';
 import { loadAllPublishedDevotionals, loadPublishedHymns, loadPublishedReadingPlans, loadPublishedVideos, loadPublishedFaithResources, loadDailyVerse } from '@/lib/contentSource';
 import { loadDonationSettings } from '@/lib/donationSettings';
 import { recordAppVisit } from '@/lib/visitorAnalytics';
+import { getKeepScreenOn } from '@/lib/devicePreferences';
 import { Home } from '@/pages/Home';
 import { Auth } from '@/pages/Auth';
 import { ForgotPassword } from '@/pages/ForgotPassword';
@@ -59,6 +60,49 @@ function AdminAccessDenied() {
 
 function ContentSync() {
   const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return;
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    const syncWakeLock = async () => {
+      const enabled = getKeepScreenOn();
+      if (!enabled) {
+        if (sentinel) {
+          await sentinel.release().catch(() => {});
+          sentinel = null;
+        }
+        return;
+      }
+      if (document.visibilityState !== 'visible') return;
+      try {
+        if (!sentinel) {
+          sentinel = await navigator.wakeLock.request('screen');
+          if (cancelled && sentinel) {
+            await sentinel.release().catch(() => {});
+            sentinel = null;
+          }
+        }
+      } catch {
+        /* Wake lock may fail on battery saver or unsupported contexts */
+      }
+    };
+
+    void syncWakeLock();
+    const onToggle = () => void syncWakeLock();
+    const onVisibility = () => void syncWakeLock();
+    window.addEventListener('believers:keep-screen-on', onToggle);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('believers:keep-screen-on', onToggle);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (sentinel) {
+        void sentinel.release().catch(() => {});
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (isLoading || !user) return;
